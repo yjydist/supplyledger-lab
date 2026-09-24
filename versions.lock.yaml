@@ -1,0 +1,148 @@
+schemaVersion: 1
+measuredAtUtc: 2026-09-24T09:01:06Z
+specification: SPEC.md §§2.1–2.3
+sourceCommits:
+  repositoryBaseline: 0f912e9da0456639f2ca231721be22caf38f0ad8
+  fabric: 86c1172bec37e6590c6b1ae6f847833df48d65fc
+  fabricCA: 991439f8f01d3f7a31ef77111afadf67a93f8c9d
+  contractAPI: 93365ca4e2841a3105cca0019af2428aed8c3ad9
+  gateway: 61308a157c31432447d66f4d6aa231e4126dfd90
+platform:
+  host: darwin/arm64
+  containers: linux/arm64
+  emulated: false
+tools:
+  dockerDesktop: 4.92.0+240144
+  dockerClient:
+    version: 29.8.0
+    apiVersion: "1.56"
+    gitCommit: 88096ef
+  dockerEngine:
+    version: 29.8.0
+    apiVersion: "1.56"
+    gitCommit: 3ce5872
+  compose: v5.5.1
+  buildx: v0.37.1
+  hostGo: go1.27.1 darwin/arm64
+  buildGo:
+    version: go1.26.8 linux/arm64
+    imageKey: goBuilder
+    GOTOOLCHAIN: local
+    archive: https://go.dev/dl/go1.26.8.linux-arm64.tar.gz
+    archiveSha256: 211ffced9dcb9633a55eac6364816ec0ddd951389a740e88fa8b3337971bdda0
+    executableSha256: f69c40d8321223ad71f9107f6513950c760bd7c1f363f0c4273dec1d1d748425
+releases:
+  fabric:
+    version: v3.1.5
+    archive: https://github.com/hyperledger/fabric/releases/download/v3.1.5/hyperledger-fabric-linux-arm64-3.1.5.tar.gz
+    archiveSha256: 4a42cad740a7e0373eda6bf1e27c86e9b06132f9bb751daf7f0f7dc1d1bbfed9
+    binariesSha256:
+      configtxgen: fc586e692e079756497a39e185e27d229399deb5af2fc5f5ca0105c7e64c334b
+      configtxlator: b631d741d710fe393e80cc77492397db8a351ea88d1c67617ab39e509c1721e1
+      discover: 897c43005914f6824387b36fea35d318a40a87bbcd212522f1d855f58b8df5d9
+      ledgerutil: 2f223e61c5f61c53edc907f6bc7ca6b494136fcebcc4ed337c781674c3828aac
+      orderer: d4da3bdab6ea5abf4c5d2398621becf01408d2fac3c3181b251a98be4b1856fb
+      osnadmin: b4ec4a5b7c123eba996ecd7295caf3dec99e876a1b6aeee80151be372a56490f
+      peer: c0d1b6aebd177467ec4afbef7b396807bcdfd5402fad796e2bc163d457025d7c
+  fabricCA:
+    version: v1.5.22
+    archive: https://github.com/hyperledger/fabric-ca/releases/download/v1.5.22/hyperledger-fabric-ca-linux-arm64-1.5.22.tar.gz
+    archiveSha256: a2d8f5bf607dc38ce271d456244d754eb8f0a605332749285fcd1073ed19284f
+    binariesSha256:
+      fabric-ca-client: 71c899e8c9b240ff5a1e9c1c8689a0afddb45abf7c4692b5ca45e5599ea33b72
+      fabric-ca-server: 05956090d2b6000e7d76a07d117aa02592b8cd8a2e7e323cbca8290ecec1e340
+images:
+  fabricPeer:
+    reference: docker.io/hyperledger/fabric-peer:3.1.5@sha256:e07c735b6f2d131315f3ae6e582c5aa602143d9d14805bb98be8ebc9d6baa82c
+    manifestDigest: sha256:e07c735b6f2d131315f3ae6e582c5aa602143d9d14805bb98be8ebc9d6baa82c
+    platform: linux/arm64
+    platformDigest: sha256:91930486903945ffba8cad4fa57ffa63fa5fcff90752552eda8f1fe5c9db0c18
+    observedCliVersion: v3.1.5
+    imageBinarySha256: 5b1c3bfe91abfc99dc9cbd4dcaff07b36706fb8bd18179ad2624d76e20fbead2
+  fabricOrderer:
+    reference: docker.io/hyperledger/fabric-orderer:3.1.5@sha256:dcb4c042237993a6f537b2f54e701e749f8e108f25c0cbe0c6742c205fccc3d5
+    manifestDigest: sha256:dcb4c042237993a6f537b2f54e701e749f8e108f25c0cbe0c6742c205fccc3d5
+    platform: linux/arm64
+    platformDigest: sha256:d4e8c4873654ea1abfdf9f91652a75d8a929b2f7c3042eaff93d992cd5c186de
+    observedCliVersion: v3.1.5
+    imageBinarySha256: 55e0be5f278e5499f956aba2be5b2e94704d3c3dc2668da5f8707ff363c60997
+  fabricCA:
+    reference: docker.io/hyperledger/fabric-ca:1.5.22@sha256:a70b6ba64a08b4d856802fe1fa66af9f2e03a26a63ceaff0de7c852ca7178b72
+    manifestDigest: sha256:a70b6ba64a08b4d856802fe1fa66af9f2e03a26a63ceaff0de7c852ca7178b72
+    platform: linux/arm64
+    platformDigest: sha256:0286c59cb27d41440e4190726912e935b695db9dfcdd75b242c2d3525ed03b8a
+    observedCliVersion: v1.5.22
+    imageBinariesSha256:
+      fabric-ca-client: 2d00bff845b5fcda607884550d0d8fabdf2703091da9fedbe799501f38d00c6b
+      fabric-ca-server: 97c3567c95f67f7cab6cc0ad119faa87899c75c247b1b7268c65dac807e555a8
+  couchdb:
+    reference: docker.io/library/couchdb:3.4.2@sha256:2817ad50b5c5cf7461f5963670466197426605a790a19a6208068c509a2d8a59
+    manifestDigest: sha256:2817ad50b5c5cf7461f5963670466197426605a790a19a6208068c509a2d8a59
+    platform: linux/arm64
+    platformDigest: sha256:4235c10986cf4e6ad6efd3854ebe699e66858a63362e63c99cef183da360a839
+    observedReleaseDirectory: /opt/couchdb/lib/couch-3.4.2
+  postgres:
+    reference: docker.io/library/postgres:17.10@sha256:7958605b474b3d264a969cb3a123d6aa00ad1e1fe9da8a69984dabb704d93317
+    manifestDigest: sha256:7958605b474b3d264a969cb3a123d6aa00ad1e1fe9da8a69984dabb704d93317
+    platform: linux/arm64
+    platformDigest: sha256:b97e4050eec52621cbed9410fbca62c0b807344cf16485cecefe99b31d233084
+    observedCliVersion: 17.10
+  goBuilder:
+    reference: docker.io/library/golang:1.26.8-bookworm@sha256:a688600ca24f8a4d3ca77f95b0dd40704a9fc787c826660eb7ba0b641b8b175d
+    manifestDigest: sha256:a688600ca24f8a4d3ca77f95b0dd40704a9fc787c826660eb7ba0b641b8b175d
+    platform: linux/arm64
+    platformDigest: sha256:37a6d96e606ca410603609f2c235f182ff13060266d7626688b21f132ae338d4
+    observedCliVersion: go1.26.8 linux/arm64
+modules:
+  chaincode:
+    module: github.com/yjydist/supplyledger-lab/chaincode
+    goVersion: 1.26.8
+    goMod: chaincode/go.mod
+    goModSha256: c28a29b513ba0d78ba1ae20ef44e6c8c16862dba23f16c7f7717ded41ff50c1b
+    goSum: chaincode/go.sum
+    goSumSha256: 78ee5531b5560ed3bb588a06471f2031e4205774fa9d9dec8fb7fe1d24d5fade
+    direct:
+      - github.com/hyperledger/fabric-contract-api-go/v2@v2.2.3
+    requirements:
+      - github.com/hyperledger/fabric-contract-api-go/v2@v2.2.3
+      - github.com/go-openapi/jsonpointer@v1.0.0
+      - github.com/go-openapi/jsonreference@v1.0.1
+      - github.com/go-openapi/spec@v1.0.1
+      - github.com/go-openapi/swag/conv@v0.29.1
+      - github.com/go-openapi/swag/jsonutils@v0.29.1
+      - github.com/go-openapi/swag/loading@v0.29.1
+      - github.com/go-openapi/swag/pools@v0.29.1
+      - github.com/go-openapi/swag/stringutils@v0.29.1
+      - github.com/go-openapi/swag/typeutils@v0.29.1
+      - github.com/go-openapi/swag/yamlutils@v0.29.1
+      - github.com/hyperledger/fabric-chaincode-go/v2@v2.3.1-0.20260831054443-83a556592560
+      - github.com/hyperledger/fabric-protos-go-apiv2@v0.3.7
+      - github.com/xeipuuv/gojsonpointer@v0.0.0-20190905194746-02993c407bfb
+      - github.com/xeipuuv/gojsonreference@v0.0.0-20180127040603-bd5ef7bd5415
+      - github.com/xeipuuv/gojsonschema@v1.2.0
+      - go.yaml.in/yaml/v3@v3.0.5
+      - golang.org/x/net@v0.58.0
+      - golang.org/x/sys@v0.47.0
+      - golang.org/x/text@v0.41.0
+      - google.golang.org/genproto/googleapis/rpc@v0.0.0-20260818201246-1b0934165a6f
+      - google.golang.org/grpc@v1.83.2
+      - google.golang.org/protobuf@v1.36.12
+  app:
+    module: github.com/yjydist/supplyledger-lab/app
+    goVersion: 1.26.8
+    goMod: app/go.mod
+    goModSha256: abe0bc0220dd973c827ff95973583eb6b71dfa078ed3e33007f68bfe9132d189
+    goSum: app/go.sum
+    goSumSha256: 6c05f72b485deca6dee0ffb25e57ccb66cb197b7fff9178b6aff3e0b51a080fc
+    direct:
+      - github.com/hyperledger/fabric-gateway@v1.12.1
+    requirements:
+      - github.com/hyperledger/fabric-gateway@v1.12.1
+      - github.com/hyperledger/fabric-protos-go-apiv2@v0.3.7
+      - github.com/miekg/pkcs11@v1.1.2
+      - golang.org/x/net@v0.58.0
+      - golang.org/x/sys@v0.47.0
+      - golang.org/x/text@v0.41.0
+      - google.golang.org/genproto/googleapis/rpc@v0.0.0-20260526163538-3dc84a4a5aaa
+      - google.golang.org/grpc@v1.83.2
+      - google.golang.org/protobuf@v1.36.12
