@@ -1,0 +1,10 @@
+name: supplyledger
+
+# M0 only: this file validates the tools service, not the formal network in SPEC.md §3.5.
+services:
+  tools:
+    image: supply-tools:m0-fabric3.1.5-ca1.5.22
+    profiles: [bootstrap]
+    network_mode: none
+    read_only: true
+    command: ["peer", "version"]
