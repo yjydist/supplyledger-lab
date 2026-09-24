@@ -1,8 +1,8 @@
 schemaVersion: 1
-measuredAtUtc: 2026-09-24T09:01:06Z
+measuredAtUtc: 2026-09-24T09:23:39Z
 specification: SPEC.md §§2.1–2.3
 sourceCommits:
-  repositoryBaseline: 0f912e9da0456639f2ca231721be22caf38f0ad8
+  repositoryBaseline: 9ab5fedc0064650c5033e81d8e2380912def4719
   fabric: 86c1172bec37e6590c6b1ae6f847833df48d65fc
   fabricCA: 991439f8f01d3f7a31ef77111afadf67a93f8c9d
   contractAPI: 93365ca4e2841a3105cca0019af2428aed8c3ad9
@@ -52,6 +52,12 @@ releases:
       fabric-ca-client: 71c899e8c9b240ff5a1e9c1c8689a0afddb45abf7c4692b5ca45e5599ea33b72
       fabric-ca-server: 05956090d2b6000e7d76a07d117aa02592b8cd8a2e7e323cbca8290ecec1e340
 images:
+  ubuntuBase:
+    reference: docker.io/library/ubuntu:24.04@sha256:008173c23f95b170204355c12626cb5a965d779a7e1283b09e9cffbb1bf33ca3
+    manifestDigest: sha256:008173c23f95b170204355c12626cb5a965d779a7e1283b09e9cffbb1bf33ca3
+    platform: linux/arm64
+    platformDigest: sha256:11dc1ccb427f0464a2369e645454c272bb0baece7357c892ba69d313b3a332cf
+    observedRelease: Ubuntu 24.04.5 LTS
   fabricPeer:
     reference: docker.io/hyperledger/fabric-peer:3.1.5@sha256:e07c735b6f2d131315f3ae6e582c5aa602143d9d14805bb98be8ebc9d6baa82c
     manifestDigest: sha256:e07c735b6f2d131315f3ae6e582c5aa602143d9d14805bb98be8ebc9d6baa82c
@@ -93,6 +99,27 @@ images:
     platform: linux/arm64
     platformDigest: sha256:37a6d96e606ca410603609f2c235f182ff13060266d7626688b21f132ae338d4
     observedCliVersion: go1.26.8 linux/arm64
+  supplyTools:
+    localTag: supply-tools:m0-fabric3.1.5-ca1.5.22
+    baseImageKey: ubuntuBase
+    platform: linux/arm64
+    localIndexDigest: sha256:6b466c4dbd8aee240cbbc4c95860c4bf0b7a0de83b3edc808bc3dc71b895f8fe
+    localPlatformDigest: sha256:518f2c0569e28415082bce18a7d680a2232d811085542f13d51c0ca789e60c23
+    publishedManifestDigest: NOT RUN
+    fabricVersion: v3.1.5
+    fabricCAVersion: v1.5.22
+    osPackageSource: http://ports.ubuntu.com/ubuntu-ports/
+    osPackageSuites: noble,noble-updates,noble-backports,noble-security
+    osPackageManifestSha256: 1c4abe3b235899fdf7f2c65707ae6e5d1fd3128b5c02600a6d5e105051c5d3d8
+    directOsPackages:
+      bash: 5.2.21-2ubuntu4
+      ca-certificates: 20260601~24.04.1
+      coreutils: 9.4-3ubuntu6.3
+      curl: 8.5.0-2ubuntu10.13
+      gzip: 1.12-1ubuntu3.2
+      jq: 1.7.1-3ubuntu0.24.04.2
+      openssl: 3.0.13-0ubuntu3.15
+      tar: 1.35+dfsg-3ubuntu0.4
 modules:
   chaincode:
     module: github.com/yjydist/supplyledger-lab/chaincode
