@@ -1,0 +1,136 @@
+name: supplyledger
+
+x-ca: &ca
+  image: docker.io/hyperledger/fabric-ca:1.5.22@sha256:a70b6ba64a08b4d856802fe1fa66af9f2e03a26a63ceaff0de7c852ca7178b72
+  pull_policy: never
+  # Refuse an empty volume: first init and signing are separate native steps.
+  command:
+    - sh
+    - -ceu
+    - |
+      cd /etc/hyperledger/fabric-ca-server
+      test -s fabric-ca-server-config.yaml
+      test -s fabric-ca-server.db
+      test -s ca-cert.pem
+      exec fabric-ca-server start
+  profiles: [ca]
+  read_only: true
+  tmpfs: [/tmp]
+  stop_grace_period: 10s
+
+services:
+  ca-seller-tls:
+    <<: *ca
+    volumes:
+      - ca-seller-tls-data:/etc/hyperledger/fabric-ca-server
+    networks:
+      seller:
+        aliases: [ca-tls.seller.supply.test]
+  ca-seller-enroll:
+    <<: *ca
+    volumes:
+      - ca-seller-enroll-data:/etc/hyperledger/fabric-ca-server
+    networks:
+      seller:
+        aliases: [ca-enroll.seller.supply.test]
+  ca-buyer-tls:
+    <<: *ca
+    volumes:
+      - ca-buyer-tls-data:/etc/hyperledger/fabric-ca-server
+    networks:
+      buyer:
+        aliases: [ca-tls.buyer.supply.test]
+  ca-buyer-enroll:
+    <<: *ca
+    volumes:
+      - ca-buyer-enroll-data:/etc/hyperledger/fabric-ca-server
+    networks:
+      buyer:
+        aliases: [ca-enroll.buyer.supply.test]
+  ca-carrier-tls:
+    <<: *ca
+    volumes:
+      - ca-carrier-tls-data:/etc/hyperledger/fabric-ca-server
+    networks:
+      carrier:
+        aliases: [ca-tls.carrier.supply.test]
+  ca-carrier-enroll:
+    <<: *ca
+    volumes:
+      - ca-carrier-enroll-data:/etc/hyperledger/fabric-ca-server
+    networks:
+      carrier:
+        aliases: [ca-enroll.carrier.supply.test]
+  ca-orderer-tls:
+    <<: *ca
+    volumes:
+      - ca-orderer-tls-data:/etc/hyperledger/fabric-ca-server
+    networks:
+      orderer:
+        aliases: [ca-tls.orderer.supply.test]
+  ca-orderer-enroll:
+    <<: *ca
+    volumes:
+      - ca-orderer-enroll-data:/etc/hyperledger/fabric-ca-server
+    networks:
+      orderer:
+        aliases: [ca-enroll.orderer.supply.test]
+  ca-orderer-admin-tls:
+    <<: *ca
+    volumes:
+      - ca-orderer-admin-tls-data:/etc/hyperledger/fabric-ca-server
+    networks:
+      orderer:
+        aliases: [ca-admin-tls.orderer.supply.test]
+
+networks:
+  seller:
+    name: supply-seller
+    internal: true
+  buyer:
+    name: supply-buyer
+    internal: true
+  carrier:
+    name: supply-carrier
+    internal: true
+  orderer:
+    name: supply-orderer
+    internal: true
+
+volumes:
+  ca-seller-tls-data:
+    name: supplyledger_ca_seller_tls
+    labels:
+      supplyledger.reset: allow
+  ca-seller-enroll-data:
+    name: supplyledger_ca_seller_enroll
+    labels:
+      supplyledger.reset: allow
+  ca-buyer-tls-data:
+    name: supplyledger_ca_buyer_tls
+    labels:
+      supplyledger.reset: allow
+  ca-buyer-enroll-data:
+    name: supplyledger_ca_buyer_enroll
+    labels:
+      supplyledger.reset: allow
+  ca-carrier-tls-data:
+    name: supplyledger_ca_carrier_tls
+    labels:
+      supplyledger.reset: allow
+  ca-carrier-enroll-data:
+    name: supplyledger_ca_carrier_enroll
+    labels:
+      supplyledger.reset: allow
+  ca-orderer-tls-data:
+    name: supplyledger_ca_orderer_tls
+    labels:
+      supplyledger.reset: allow
+  ca-orderer-enroll-data:
+    name: supplyledger_ca_orderer_enroll
+    labels:
+      supplyledger.reset: allow
+  ca-orderer-admin-tls-data:
+    name: supplyledger_ca_orderer_admin_tls
+    labels:
+      supplyledger.reset: allow

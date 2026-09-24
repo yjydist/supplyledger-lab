@@ -1,0 +1,62 @@
+# This checked-in template has no usable bootstrap secret; render it into the private CA volume.
+version: 1.5.22
+port: 7054
+ca:
+  name: buyer-tls-ca
+  certfile: ca-cert.pem
+  keyfile: ca-key.pem
+tls:
+  enabled: true
+db:
+  type: sqlite3
+  datasource: fabric-ca-server.db
+registry:
+  maxenrollments: 5
+  identities:
+    - name: buyer-tls-registrar
+      pass: null
+      type: client
+      affiliation: ""
+      attrs:
+        hf.Registrar.Roles: "client,peer"
+        hf.Revoker: true
+        hf.GenCRL: true
+signing:
+  default:
+    usage:
+      - signing
+      - key encipherment
+      - server auth
+      - client auth
+      - key agreement
+    expiry: 8760h
+  profiles:
+    tls:
+      usage:
+        - signing
+        - key encipherment
+        - server auth
+        - client auth
+        - key agreement
+      expiry: 8760h
+csr:
+  cn: buyer-tls-ca
+  keyrequest:
+    algo: ecdsa
+    size: 256
+  names:
+    - C: CN
+      O: SupplyLedger Lab
+      OU: buyer tls CA
+  hosts:
+    - ca-tls.buyer.supply.test
+  ca:
+    expiry: 131400h
+    pathlength: 0
+bccsp:
+  default: SW
+  sw:
+    hash: SHA2
+    security: 256
+    filekeystore:
+      keystore: msp/keystore

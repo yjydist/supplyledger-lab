@@ -1,0 +1,53 @@
+# This checked-in template has no usable bootstrap secret; render it into the private CA volume.
+version: 1.5.22
+port: 7054
+ca:
+  name: buyer-enroll-ca
+  certfile: ca-cert.pem
+  keyfile: ca-key.pem
+tls:
+  enabled: true
+  certfile: tls/server.crt
+  keyfile: tls/server.key
+db:
+  type: sqlite3
+  datasource: fabric-ca-server.db
+registry:
+  maxenrollments: 5
+  identities:
+    - name: buyer-enroll-registrar
+      pass: null
+      type: client
+      affiliation: ""
+      attrs:
+        hf.Registrar.Roles: "client,peer,admin"
+        hf.Registrar.Attributes: "supply.userId,supply.role"
+        hf.Revoker: true
+        hf.GenCRL: true
+signing:
+  default:
+    usage:
+      - digital signature
+    expiry: 8760h
+  profiles: {}
+csr:
+  cn: buyer-enroll-ca
+  keyrequest:
+    algo: ecdsa
+    size: 256
+  names:
+    - C: CN
+      O: SupplyLedger Lab
+      OU: buyer enroll CA
+  hosts:
+    - ca-enroll.buyer.supply.test
+  ca:
+    expiry: 131400h
+    pathlength: 0
+bccsp:
+  default: SW
+  sw:
+    hash: SHA2
+    security: 256
+    filekeystore:
+      keystore: msp/keystore

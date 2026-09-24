@@ -4,6 +4,7 @@ set -euo pipefail
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 lock_file="$repo_root/versions.lock.yaml"
 compose_file="$repo_root/compose/bootstrap.yaml"
+ca_compose_file="$repo_root/compose/ca.yaml"
 project=supplyledger
 
 tools_image=$(awk '
@@ -31,7 +32,7 @@ if [[ -z "$tools_image" || -z "$expected_tools_digest" || -z "$expected_platform
   exit 1
 fi
 
-compose=(docker compose -p "$project" -f "$compose_file" --profile '*')
+compose=(docker compose -p "$project" -f "$compose_file" -f "$ca_compose_file" --profile '*')
 config_json=$("${compose[@]}" config --format json)
 volume_rows=$(printf '%s\n' "$config_json" |
   docker run --rm --pull=never --network none --read-only -i \
