@@ -92,7 +92,7 @@ images:
     manifestDigest: sha256:7958605b474b3d264a969cb3a123d6aa00ad1e1fe9da8a69984dabb704d93317
     platform: linux/arm64
     platformDigest: sha256:b97e4050eec52621cbed9410fbca62c0b807344cf16485cecefe99b31d233084
-    observedCliVersion: 17.10
+    observedCliVersion: "17.10"
   goBuilder:
     reference: docker.io/library/golang:1.26.8-bookworm@sha256:a688600ca24f8a4d3ca77f95b0dd40704a9fc787c826660eb7ba0b641b8b175d
     manifestDigest: sha256:a688600ca24f8a4d3ca77f95b0dd40704a9fc787c826660eb7ba0b641b8b175d

@@ -8,6 +8,7 @@ This repository follows [SPEC.md](SPEC.md). Work proceeds by the M0–M9 milesto
 make tools-build       # build the locked local CLI image on this host
 make doctor            # check the host, Docker, tools, and a temporary bind mount
 make compose-config    # validate compose/bootstrap.yaml only
+make verify-m0          # check the M0 exit: pinned tools, both Go modules, and repository scans
 make help              # list stage entry points
 ```
 

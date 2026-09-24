@@ -5,11 +5,11 @@ BOOTSTRAP_COMPOSE := compose/bootstrap.yaml
 TOOLS_IMAGE := supply-tools:m0-fabric3.1.5-ca1.5.22
 COMPOSE := docker compose -p supplyledger -f $(BOOTSTRAP_COMPOSE) --profile bootstrap
 
-.PHONY: help tools-build doctor compose-config pki network-up channel-create chaincode-deploy app-up verify test-e2e test-fault backup restore stop down reset
+.PHONY: help tools-build doctor compose-config verify-m0 pki network-up channel-create chaincode-deploy app-up verify test-e2e test-fault backup restore stop down reset
 
 help:
 	@printf '%s\n' \
-	  'M0: tools-build, doctor, compose-config, stop, down, reset' \
+	  'M0: tools-build, doctor, compose-config, verify-m0, stop, down, reset' \
 	  'Later stages: pki (M1), network-up/channel-create (M2), chaincode-deploy (M3),' \
 	  'app-up (M6), verify/test-e2e (M3+), test-fault/backup/restore (M9).' \
 	  'Later-stage targets exit with NOT RUN until their native first-run steps are recorded.'
@@ -23,6 +23,9 @@ doctor:
 compose-config:
 	$(COMPOSE) config --quiet
 	@printf '%s\n' 'PASS: M0 bootstrap Compose config; formal network Compose NOT RUN'
+
+verify-m0:
+	bash scripts/verify-m0.sh
 
 define unavailable
 	@printf 'NOT RUN: make %s belongs to %s; complete the native first-run steps in SPEC.md §19 before automation.\n' '$@' '$(1)' >&2; exit 2
