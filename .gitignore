@@ -1,0 +1,21 @@
+.DS_Store
+.env*
+!.env.example
+.secrets/
+.runtime/
+backups/
+
+# Generated data and credentials must not enter the repository.
+*.key
+*.p12
+*.pfx
+*.db
+*.sqlite3
+**/keystore/
+
+# Local build and coverage output.
+bin/
+dist/
+coverage/
+*.test
+*.out
