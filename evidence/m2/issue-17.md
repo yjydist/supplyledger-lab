@@ -71,3 +71,35 @@ It exited 0 with four scoped PASS lines for the initial block, four public MSPs/
 The first local version of the author-written auditor compared the #10 colon-delimited DER fingerprint without normalizing the colons, so that local audit exited 1 at `orderer0: M1 certificate pin, SAN or TLS use differs`. The pinned native generation/decode had already passed. After normalizing the representation, the auditor passed and the original block was not regenerated or modified. This report keeps the diagnostic failure distinct from the final static result.
 
 The [first-run sequence](../../docs/m2-channel-native.md) remains NET-03 → #16 channel-less Orderer startup/admin checks (NET-04) → #18 individual Orderer joins (NET-05) → #16 Peer/CouchDB startup (NET-06) → #18 Peer joins/anchor checks (NET-07) → #17 current-config decode (NET-08). The present static block audit cannot stand in for a live current-channel configuration, consensus, channel governance signature or full `T-NET-03` result. No validation code is claimed.
+
+## Later read-only block-0 header-hash cross-check
+
+This limited `M2-I17-08` check ran on clean main `47923ccb36c5726e658240a097d6645e81d3d3cc` with unchanged `versions.lock.yaml` SHA-256 `422fba14294aaf9f0c40862fcd112ed3d2ed664cd5294c7bfe0aa14477fa234b`. Compose tier was `bootstrap.yaml` + `ca.yaml` + `network.yaml`, project `supplyledger`; this calculation started no container and sent no network request. Prepared ignored inputs in the main worktree were the original #17 `.runtime/channel/inspect-block.json` (SHA-256 `2e3c9994819ae2f5ec5c6a5741f6bf558d0c364380ffee3cac10930f8f4b4e09`), its unchanged block file (artifact SHA-256 `b0a5ec0894d45ca7b6577b8f576d176347ad90cb4f80ac18de2dea3cc5ebd08a`), and the #18 Seller native post-join `.runtime/m2-issue18-peer-logs/seller-post-join-getinfo.log` (SHA-256 `cb52eb704b05d4b86dd5dde5a1b3911b382f95f388dc6b36ce0ed9cac428874d`). #18 had already fetched block 0 independently from each of three joined Orderers and found their bytes identical to this original file.
+
+Fabric 3.1.5 [`protoutil.BlockHeaderHash`](https://github.com/hyperledger/fabric/blob/v3.1.5/protoutil/blockutils.go#L39-L62) hashes ASN.1 DER of `(block number, previous hash, data hash)`. The following read-only command used that rule for **block 0 only**; `302702010004000420` is the DER prefix for number 0, empty previous hash and a 32-byte data hash. It compared the result with Seller's earlier native `BlockchainInfo` output, rather than treating the SHA-256 of the whole `.block` file as `genesisHash`:
+
+```sh
+python3 - <<'PY'
+import base64
+import hashlib
+import json
+from pathlib import Path
+
+header = json.loads(Path('.runtime/channel/inspect-block.json').read_text())['header']
+assert header['number'] == '0' and header['previous_hash'] == ''
+data_hash = base64.b64decode(header['data_hash'], validate=True)
+assert len(data_hash) == 32
+header_der = bytes.fromhex('302702010004000420') + data_hash
+digest = hashlib.sha256(header_der).digest()
+line = next(line for line in Path(
+    '.runtime/m2-issue18-peer-logs/seller-post-join-getinfo.log'
+).read_text().splitlines() if line.startswith('Blockchain info: '))
+observed = base64.b64decode(json.loads(line.removeprefix(
+    'Blockchain info: '))['currentBlockHash'], validate=True)
+print('block0_header_hash_hex=' + digest.hex())
+print('matches_seller_getinfo=' + str(digest == observed))
+assert digest == observed
+PY
+```
+
+Expected: the canonical block-header digest of the retained original block 0 equals Seller's live local-ledger `currentBlockHash` while Seller reports height 1. Actual: exit **0**, `block0_header_hash_hex=5c68bf099e95b934b6034a4d7aa8c52442751c30bc8b56fcbbde9b0138e38ba7`, `matches_seller_getinfo=True`; Seller's observed base64 value was `XGi/CZ6VuTS2A0pNeqjFJEJ1HDC8i1b8u96bATjji6c=`. **PASS** for this limited block-0 identity cross-check. This header hash is distinct from the block **file** SHA-256 `b0a5ec…d08a`. Buyer/Carrier Peer block-0 comparisons, current live configuration decoding, full NET-08 and `T-NET-03` remain **NOT RUN**. This calculation submitted no transaction, so it produced no new txId, block height or validation code; Seller's previously observed local height was 1.
