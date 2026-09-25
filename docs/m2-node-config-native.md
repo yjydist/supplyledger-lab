@@ -186,7 +186,144 @@ docker logs "supplyledger-${name}-1" > ".runtime/m2-node-logs/${name}-join-limit
 rg -F 'ChannelParticipation.MaxRequestBodySize = 1048576' ".runtime/m2-node-logs/${name}-join-limit-container.log"
 ~~~
 
-Repeat the last block for `orderer1` and `orderer2` only after Orderer0's reviewed checkpoint, with separate native commands and logs. A successful HTTP status is necessary for a later join; after a join, also require the channel to appear and eventually report `active`. Full T-NET-04 remains NOT RUN until all three Orderers reach that state.
+Repeat the last block for `orderer1` and `orderer2` only after Orderer0's reviewed checkpoint, with separate native commands and logs. A successful HTTP status is necessary for a later join; after a join, also require the channel to appear and eventually report `active`. At that prejoin checkpoint, full T-NET-04 remained NOT RUN; #18 subsequently verified all three joined Orderers as active.
+
+## One-time recovery from the first Seller Peer BCCSP startup failure
+
+At source commit `45dab4215f482452c594abfd48221a550282d347`, all three Orderers had joined and the three CouchDBs started individually. Each CouchDB returned `/_up` HTTP 200 with `status=ok` when the scoped probe supplied its own credentials; this does not establish that `/_up` requires authentication. The first native `peer0-seller` Compose start returned exit 0, but its process exited 1 at `InitCmd` with `Cannot run peer because could not get peer BCCSP configuration`. Buyer and Carrier Peers were not started; no Peer joined the channel. Preserve the failed Seller container ID, `supplyledger_peer0_seller_ledger` volume and ignored `.runtime/m2-node-logs/peer0-seller-first-container.log`. Fabric v3.1.5 [requires a `peer.BCCSP` subtree at initialization](https://github.com/hyperledger/fabric/blob/v3.1.5/internal/peer/common/common.go#L150-L157); the pinned [sample `core.yaml`](https://github.com/hyperledger/fabric/blob/v3.1.5/sampleconfig/core.yaml#L305-L319) uses software BCCSP, SHA2 and 256-bit security. The three reviewed Peer templates now select `SW`, `SHA2`, `256` and each node's **own** `/run/supply/msp/keystore` read-only mount. The failure occurred before Peer TLS, Peer-to-CouchDB connectivity or channel readiness could be observed.
+
+Only after this source fix is independently reviewed and integrated into the retained main checkout, stage six newly rendered configs in a **separate ignored output directory**. Do not move or replace the running Orderers' config files or restart their joined ledger containers. The staging and archive paths must be absent. Record the failed Seller container/volume identity, source commit and before snapshots first; no key or password value goes into tracked evidence. The same M1 identity manifest function used in the previous recovery provides a byte-for-byte continuity check.
+
+~~~sh
+set -eu
+umask 077
+test "$(docker inspect --format '{{.State.Status}}:{{.State.ExitCode}}' supplyledger-peer0-seller-1)" = exited:1
+test -f .runtime/m2-node-logs/peer0-seller-first-container.log
+for org in buyer carrier; do
+  if docker inspect "supplyledger-peer0-${org}-1" > /dev/null 2>&1; then
+    printf 'FAIL: peer0-%s container exists; inspect before replacing its config\n' "$org" >&2
+    exit 1
+  fi
+done
+test ! -e .runtime/m2-peer-bccsp-stage
+test ! -L .runtime/m2-peer-bccsp-stage
+test ! -e .runtime/m2-node-logs/network-config-before-peer-bccsp
+test ! -L .runtime/m2-node-logs/network-config-before-peer-bccsp
+python3 - <<'PY'
+from pathlib import Path
+from stat import S_IMODE
+root = Path('.secrets')
+assert root.is_dir() and not root.is_symlink()
+assert S_IMODE(root.stat().st_mode) == 0o700
+for subdir in ('couchdb', 'peer-couchdb'):
+    directory = root / subdir
+    assert directory.is_dir() and not directory.is_symlink()
+    assert S_IMODE(directory.stat().st_mode) == 0o700
+    assert {path.name for path in directory.iterdir()} == {
+        'seller.env', 'buyer.env', 'carrier.env'}
+    for path in directory.iterdir():
+        assert path.is_file() and not path.is_symlink()
+        assert S_IMODE(path.stat().st_mode) == 0o600
+print('PASS: exact six existing 0600 credential files; stage cannot generate any')
+PY
+m1_file_hashes() {
+  python3 - <<'PY'
+from hashlib import sha256
+from pathlib import Path
+root = Path('.runtime/identities')
+assert root.is_dir() and not root.is_symlink()
+for path in sorted(root.rglob('*')):
+    assert not path.is_symlink(), path
+    if path.is_file():
+        print(sha256(path.read_bytes()).hexdigest(), path.relative_to(root))
+PY
+}
+git rev-parse HEAD > .runtime/m2-node-logs/peer-bccsp-source-commit
+docker inspect --format '{{.Id}}' supplyledger-peer0-seller-1 > .runtime/m2-node-logs/peer0-seller-before-bccsp-id
+docker volume inspect --format '{{.Name}} {{.CreatedAt}}' supplyledger_peer0_seller_ledger > .runtime/m2-node-logs/peer0-seller-ledger-before-bccsp
+for name in orderer0 orderer1 orderer2; do
+  test "$(docker inspect --format '{{.State.Status}}' "supplyledger-${name}-1")" = running
+  docker inspect --format '{{.Id}}' "supplyledger-${name}-1" > ".runtime/m2-node-logs/${name}-before-peer-bccsp-id"
+done
+make verify-m1 > .runtime/m2-node-logs/m1-before-peer-bccsp.log 2>&1
+m1_file_hashes > .runtime/m2-node-logs/m1-identity-before-peer-bccsp.sha256
+shasum -a 256 .secrets/couchdb/*.env .secrets/peer-couchdb/*.env > .runtime/m2-node-logs/m2-env-before-peer-bccsp.sha256
+shasum -a 256 .runtime/channel/supplychannel.block .runtime/channel/inspect-block.json > .runtime/m2-node-logs/channel-before-peer-bccsp.sha256
+shasum -a 256 .runtime/network-config/orderer*.yaml > .runtime/m2-node-logs/orderer-config-before-peer-bccsp.sha256
+make prepare-m2-nodes M2_OUTPUT_RUNTIME_DIR=.runtime/m2-peer-bccsp-stage
+make verify-m2-nodes M2_OUTPUT_RUNTIME_DIR=.runtime/m2-peer-bccsp-stage
+make verify-m2-node-block M2_OUTPUT_RUNTIME_DIR=.runtime/m2-peer-bccsp-stage M2_INSPECT_BLOCK=.runtime/channel/inspect-block.json
+~~~
+
+Before replacing any file, compare the stage with the old rendered configs. All three Orderers must be byte-identical. Each Peer may gain **only** the reviewed BCCSP mapping immediately after its ledger path; no MSP/TLS key path, CouchDB address, password or other setting may change.
+
+~~~sh
+python3 - <<'PY'
+from pathlib import Path
+old_dir = Path('.runtime/network-config')
+stage_dir = Path('.runtime/m2-peer-bccsp-stage/network-config')
+assert {p.name for p in old_dir.iterdir()} == {p.name for p in stage_dir.iterdir()}
+for index in range(3):
+    name = f'orderer{index}.yaml'
+    assert (stage_dir / name).read_bytes() == (old_dir / name).read_bytes(), name
+block = (b'  BCCSP:\n    Default: SW\n    SW:\n      Hash: SHA2\n'
+         b'      Security: 256\n      FileKeyStore:\n'
+         b'        KeyStore: /run/supply/msp/keystore\n')
+for org in ('seller', 'buyer', 'carrier'):
+    name = f'peer0-{org}.yaml'
+    old = (old_dir / name).read_bytes()
+    needle = b'  fileSystemPath: /var/hyperledger/production\n'
+    assert old.count(needle) == 1, name
+    assert (stage_dir / name).read_bytes() == old.replace(needle, needle + block), name
+print('PASS: only three own-MSP Peer BCCSP mappings were added')
+PY
+~~~
+
+Only if that comparison passes, archive and replace the **three Peer YAML files only**. Seller Peer is exited and Buyer/Carrier Peers have not started; the three joined Orderers keep their original config file bind sources and container IDs. Run the main-runtime preflight again, then compare M1, credential, block, decoded JSON and Orderer config snapshots. Stop and preserve all old/new files if any check fails.
+
+~~~sh
+set -eu
+umask 077
+test "$(docker inspect --format '{{.State.Status}}:{{.State.ExitCode}}' supplyledger-peer0-seller-1)" = exited:1
+for org in buyer carrier; do
+  if docker inspect "supplyledger-peer0-${org}-1" > /dev/null 2>&1; then
+    printf 'FAIL: peer0-%s container exists; inspect before replacing its config\n' "$org" >&2
+    exit 1
+  fi
+done
+mkdir -m 700 .runtime/m2-node-logs/network-config-before-peer-bccsp
+for org in seller buyer carrier; do
+  mv ".runtime/network-config/peer0-${org}.yaml" .runtime/m2-node-logs/network-config-before-peer-bccsp/
+  mv ".runtime/m2-peer-bccsp-stage/network-config/peer0-${org}.yaml" .runtime/network-config/
+done
+make verify-m2-nodes
+make verify-m2-node-block M2_INSPECT_BLOCK=.runtime/channel/inspect-block.json
+make verify-m1 > .runtime/m2-node-logs/m1-after-peer-bccsp.log 2>&1
+python3 - <<'PY' > .runtime/m2-node-logs/m1-identity-after-peer-bccsp.sha256
+from hashlib import sha256
+from pathlib import Path
+root = Path('.runtime/identities')
+assert root.is_dir() and not root.is_symlink()
+for path in sorted(root.rglob('*')):
+    assert not path.is_symlink(), path
+    if path.is_file():
+        print(sha256(path.read_bytes()).hexdigest(), path.relative_to(root))
+PY
+cmp .runtime/m2-node-logs/m1-identity-before-peer-bccsp.sha256 .runtime/m2-node-logs/m1-identity-after-peer-bccsp.sha256
+shasum -a 256 .secrets/couchdb/*.env .secrets/peer-couchdb/*.env > .runtime/m2-node-logs/m2-env-after-peer-bccsp.sha256
+cmp .runtime/m2-node-logs/m2-env-before-peer-bccsp.sha256 .runtime/m2-node-logs/m2-env-after-peer-bccsp.sha256
+shasum -a 256 .runtime/channel/supplychannel.block .runtime/channel/inspect-block.json > .runtime/m2-node-logs/channel-after-peer-bccsp.sha256
+cmp .runtime/m2-node-logs/channel-before-peer-bccsp.sha256 .runtime/m2-node-logs/channel-after-peer-bccsp.sha256
+shasum -a 256 .runtime/network-config/orderer*.yaml > .runtime/m2-node-logs/orderer-config-after-peer-bccsp.sha256
+cmp .runtime/m2-node-logs/orderer-config-before-peer-bccsp.sha256 .runtime/m2-node-logs/orderer-config-after-peer-bccsp.sha256
+for name in orderer0 orderer1 orderer2; do
+  test "$(docker inspect --format '{{.State.Status}}' "supplyledger-${name}-1")" = running
+  docker inspect --format '{{.Id}}' "supplyledger-${name}-1" > ".runtime/m2-node-logs/${name}-after-peer-bccsp-id"
+  cmp ".runtime/m2-node-logs/${name}-before-peer-bccsp-id" ".runtime/m2-node-logs/${name}-after-peer-bccsp-id"
+done
+~~~
+
+After independent review of those checks, retry **only** the failed Seller Peer with `docker compose -p supplyledger -f compose/bootstrap.yaml -f compose/ca.yaml -f compose/network.yaml --profile bootstrap --profile ca up -d --no-deps --force-recreate peer0-seller`. Require a new running container ID, unchanged `supplyledger_peer0_seller_ledger` name/creation time, pinned image, own read-only MSP/TLS/config binds and own CouchDB credential environment without printing its values. Probe its gRPC TLS hostname and `/healthz` operations endpoint with the own TLS root/client identity; Fabric v3.1.5's [operations health check](https://github.com/hyperledger/fabric/blob/v3.1.5/docs/source/operations_service.rst#L340-L366) includes CouchDB when configured. Do not call `peer channel list` or a listening port proof of `supplychannel` readiness: #18 owns individual Peer joins. Only after Seller's reviewed startup should Buyer and Carrier Peers start one by one. Never use `reset`, change the #17 block or reissue M1 identities to fix this failure.
 
 ## Native first-run sequence and remaining steps
 
@@ -194,10 +331,10 @@ These are separate operations, not a `make network-up` shortcut. Before each ope
 
 1. After #17's native `configtxgen` and static block decode, compare the **actual decoded** three consenters' client/server certificate PEM bytes to each `ordererN-tls` signcert and the effective `General.Cluster.ClientCertificate`/shared `General.TLS.Certificate` paths. Confirm cert-key match, SAN and ordinary TLS root. Keep the generated block and JSON ignored.
 2. Start `orderer0`, `orderer1`, `orderer2` **one at a time** using the merged Compose overlays and `up -d --no-deps <name>`; inspect each actual process, mount and image digest. No channel is joined at this step. For each 9443 endpoint, use a short-lived Orderer-only tools container with the ordinary `orderer-tls-ca.pem` as `osnadmin --ca-file` and the existing dedicated `osnadmin-client1-tls` cert/key as `--client-cert`/`--client-key`. `osnadmin channel list` should return HTTP 200, `systemChannel:null` and the observed prejoin `channels:null`. A request with no client certificate must fail at TLS; do not confuse CLI argument rejection with a handshake test. Record the server and client certificate fingerprints, exit/status and failure stage. #18's [three-node admin mTLS matrix](../evidence/m2/issue-18.md#admin-mtls-boundary-before-joining) has now passed; #18 owns the native channel joins.
-3. After #18 has joined all three Orderers with individual `osnadmin channel join` commands, start `couchdb0-seller`, `couchdb0-buyer`, `couchdb0-carrier` separately, check authenticated `/_up` from scoped tool contexts without logging passwords, then start `peer0-seller`, `peer0-buyer`, `peer0-carrier` separately. Check process/TLS/operations health and CouchDB connection. This is NET-06 component startup; Peer channel join and network-level readiness remain #18 work. Do not call a process that merely listens on 7051 ready for `supplychannel` or `supplycc`.
+3. After #18 has joined all three Orderers with individual `osnadmin channel join` commands, start `couchdb0-seller`, `couchdb0-buyer`, `couchdb0-carrier` separately, check credential-bearing `/_up` from scoped tool contexts without logging passwords, then start `peer0-seller`, `peer0-buyer`, `peer0-carrier` separately. The three CouchDBs have started; the first Seller Peer failure and recovery are recorded above. Check process/TLS/operations health and CouchDB connection. This is NET-06 component startup; Peer channel join and network-level readiness remain #18 work. Do not call a process that merely listens on 7051 ready for `supplychannel` or `supplycc`.
 
 ## T-NET-02 live inspection and evidence
 
 After those nine services run, rerun `make network-config` and use a structured, redacted `docker inspect` assertion over all real Orderer, Peer, CouchDB and any extant CA containers. Check the locked image digest and expected command, status, exact network membership/DNS, no published management ports, no Docker socket, each node's own read-only identity binds, no cross-organization private MSP, and a distinct named ledger/data volume. Inspect **all** runtime mounts, including any Docker-image-created anonymous parent mounts, and verify ledger/WAL/snapshot paths reside on the declared named volumes. Check the tracked repository and image build contexts contain no credentials or private key material; report counts/paths/fingerprints only. Preserve sanitized actual results, not a copied raw `docker inspect` JSON object.
 
-Record T-NET-02 as **NOT RUN** until these live checks succeed. The three-node dedicated-client and wrong-CA admin mTLS matrix is **PASS** in [#18 evidence](../evidence/m2/issue-18.md#admin-mtls-boundary-before-joining). Full T-NET-04, Peer joins, current channel configuration, block-hash comparison and chaincode/transaction checks remain **NOT RUN** until their owners execute them. The `genesisHash` field stays NOT RUN until the real block-0 identity is observed; a candidate block's file SHA-256 is only an artifact checksum. No txId, block height or validation code is invented for offline preflight.
+Record T-NET-02 as **NOT RUN** until these live checks succeed. The three-node admin mTLS matrix and full §20.1 `T-NET-04` are **PASS** in [#18 evidence](../evidence/m2/issue-18.md); Peer joins, current channel configuration, three-organization equal-height block-hash comparison and chaincode/transaction checks remain **NOT RUN** until their owners execute them. The canonical `genesisHash` field stays NOT RUN until NET-08 records the real block-0 header identity; the matching fetched block files' SHA-256 is an artifact checksum. No txId or validation code is invented for offline preflight.

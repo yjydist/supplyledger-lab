@@ -88,6 +88,21 @@ def main():
             b'bootstrap: ""', b'bootstrap: "peer0.buyer.supply.test:7051"',
             fields, output_runtime, keys, "wrong node field peer.gossip.bootstrap")
         print("PASS: cross-organization gossip bootstrap rejected")
+        peer_rendered = output_runtime / "network-config/peer0-seller.yaml"
+        expect_field_rejection(
+            peer_rendered, b"  BCCSP:\n    Default: SW\n",
+            b"", fields, output_runtime, keys,
+            "wrong node field peer.BCCSP.Default")
+        expect_field_rejection(
+            peer_rendered, b"    Default: SW\n", b"    Default: PKCS11\n",
+            fields, output_runtime, keys,
+            "wrong node field peer.BCCSP.Default")
+        expect_field_rejection(
+            peer_rendered, b"        KeyStore: /run/supply/msp/keystore\n",
+            b"        KeyStore: /run/supply/other-org/msp/keystore\n",
+            fields, output_runtime, keys,
+            "wrong node field peer.BCCSP.SW.FileKeyStore.KeyStore")
+        print("PASS: missing, non-SW and cross-organization Peer BCCSP keystore rejected")
         expect_field_rejection(
             output_runtime / "network-config/orderer0.yaml",
             b"  Cluster:\n    ClientCertificate:",
@@ -122,6 +137,31 @@ def main():
         finally:
             render_globals["ROOT"] = original_root
         print("PASS: zero source channel join body limit rejected")
+        peer_source = source_root / "network/config/peer0-seller.yaml"
+        original_peer_source = (ROOT / "network/config/peer0-seller.yaml").read_bytes()
+        for original_fragment, replacement, field in (
+            (b"  BCCSP:\n    Default: SW\n", b"",
+             "peer.BCCSP.Default"),
+            (b"    Default: SW\n", b"    Default: PKCS11\n",
+             "peer.BCCSP.Default"),
+            (b"        KeyStore: /run/supply/msp/keystore\n",
+             b"        KeyStore: /run/supply/other-org/msp/keystore\n",
+             "peer.BCCSP.SW.FileKeyStore.KeyStore"),
+        ):
+            assert original_peer_source.count(original_fragment) == 1
+            peer_source.write_bytes(original_peer_source.replace(
+                original_fragment, replacement, 1))
+            try:
+                render_globals["ROOT"] = source_root
+                try:
+                    render("peer0-seller", keys)
+                except ValueError as error:
+                    assert f"wrong source node field {field}" in str(error), str(error)
+                else:
+                    raise AssertionError(f"unsafe source Peer BCCSP accepted: {field}")
+            finally:
+                render_globals["ROOT"] = original_root
+        print("PASS: missing, non-SW and cross-organization source Peer BCCSP rejected")
         if args.inspect_block:
             assert "three effective Raft TLS cert paths and PEM bytes" in checked.stdout
             print("PASS: rendered Orderer TLS certs match native decoded #17 block")

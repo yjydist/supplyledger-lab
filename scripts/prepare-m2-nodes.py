@@ -22,6 +22,13 @@ ORDERERS = tuple(f"orderer{i}" for i in range(3))
 PASSWORD_RE = re.compile(r"[A-Za-z0-9_-]{40,}")
 KEY_RE = re.compile(r"[0-9a-f]{64}_sk")
 CERT_INVENTORY = ROOT / "evidence/m1/issue-10-certificates.csv"
+PEER_BCCSP = {
+    ("peer", "BCCSP", "Default"): "SW",
+    ("peer", "BCCSP", "SW", "Hash"): "SHA2",
+    ("peer", "BCCSP", "SW", "Security"): "256",
+    ("peer", "BCCSP", "SW", "FileKeyStore", "KeyStore"):
+        "/run/supply/msp/keystore",
+}
 
 
 def require(condition, message):
@@ -194,6 +201,11 @@ def rendered_config(name, keys):
         source_scalars, _ = yaml_fields(template)
         require(source_scalars.get(("ChannelParticipation", "MaxRequestBodySize")) == "1 MB",
                 f"{name}: source MaxRequestBodySize must be 1 MB")
+    else:
+        source_scalars, _ = yaml_fields(template)
+        for field, value in PEER_BCCSP.items():
+            require(source_scalars.get(field) == value,
+                    f"{name}: wrong source node field {'.'.join(field)}")
     data = template.read_text()
     replacements = (
         {"__ORDERER_TLS_KEY__": keys[(name, "tls")],
@@ -358,6 +370,7 @@ def check_node_fields(output_runtime, keys):
             ("operations", "tls", "key", "file"): tls_key,
             ("metrics", "provider"): "prometheus",
         }
+        expected.update(PEER_BCCSP)
         for field, value in expected.items():
             require(scalars.get(field) == value,
                     f"{name}: wrong node field {'.'.join(field)}")
