@@ -11,17 +11,23 @@ M2_SOURCE_RUNTIME_DIR ?= .runtime
 M2_OUTPUT_RUNTIME_DIR ?= .runtime
 M2_SECRETS_DIR ?= .secrets
 M2_INSPECT_BLOCK ?=
+M2_CURRENT_CONFIG_DIR ?=
+M2_APPROVED_CONFIG ?=
+M2_APPROVED_SHA256 ?=
+M2_INITIAL_SHA256 ?=
+M2_GENESIS_HASH ?=
 BOOTSTRAP := docker compose -p supplyledger -f $(BOOTSTRAP_COMPOSE) --profile bootstrap
 CA_SERVICES := docker compose -p supplyledger -f $(BOOTSTRAP_COMPOSE) -f $(CA_COMPOSE) --profile bootstrap --profile ca
 ALL_SERVICES := docker compose -p supplyledger -f $(BOOTSTRAP_COMPOSE) -f $(CA_COMPOSE) -f $(NETWORK_COMPOSE) --profile bootstrap --profile ca
 
-.PHONY: help tools-build doctor compose-config ca-config network-config test-m2-compose verify-m2-initial-block prepare-m2-nodes verify-m2-nodes verify-m2-node-block test-m2-nodes verify-m0 verify-m1 verify-m1-tls pki network-up channel-create chaincode-deploy app-up verify test-e2e test-fault backup restore stop down reset
+.PHONY: help tools-build doctor compose-config ca-config network-config test-m2-compose verify-m2-initial-block verify-m2-current-config test-m2-current-config prepare-m2-nodes verify-m2-nodes verify-m2-node-block test-m2-nodes verify-m0 verify-m1 verify-m1-tls pki network-up channel-create chaincode-deploy app-up verify test-e2e test-fault backup restore stop down reset
 
 help:
 	@printf '%s\n' \
 	  'M0: tools-build, doctor, compose-config, verify-m0' \
 	  'M1: ca-config, verify-m1, verify-m1-tls; stop, down, reset retain declared data volumes' \
 	  'M2: network-config/test-m2-compose check topology; verify-m2-initial-block audits NET-03' \
+	  'M2: verify-m2-current-config audits six separately fetched CONFIG blocks against an approved baseline' \
 	  'M2: prepare-m2-nodes renders ignored node inputs; verify-m2-nodes/test-m2-nodes check them' \
 	  'Later stages: pki (M1), network-up/channel-create (M2), chaincode-deploy (M3),' \
 	  'app-up (M6), verify/test-e2e (M3+), test-fault/backup/restore (M9).' \
@@ -50,6 +56,13 @@ test-m2-compose:
 
 verify-m2-initial-block:
 	python3 scripts/verify-m2-initial-block.py --inspect-block "$(M2_CHANNEL_DIR)/inspect-block.json" --m1-runtime-dir "$(abspath $(M1_RUNTIME_DIR))" --consenter-certs "$(M2_CHANNEL_DIR)/consenter-certs"
+
+verify-m2-current-config:
+	@test -n "$(M2_CURRENT_CONFIG_DIR)" -a -n "$(M2_APPROVED_CONFIG)" -a -n "$(M2_APPROVED_SHA256)" -a -n "$(M2_INITIAL_SHA256)" -a -n "$(M2_GENESIS_HASH)" || { printf '%s\n' 'NOT RUN: set current CONFIG dir, approved CONFIG path/SHA-256, original inspect SHA-256 and recorded genesis header hash' >&2; exit 2; }
+	python3 scripts/verify-m2-current-config.py --initial-inspect "$(M2_CHANNEL_DIR)/inspect-block.json" --initial-sha256 "$(M2_INITIAL_SHA256)" --genesis-hash "$(M2_GENESIS_HASH)" --approved-config "$(M2_APPROVED_CONFIG)" --approved-sha256 "$(M2_APPROVED_SHA256)" --current-dir "$(M2_CURRENT_CONFIG_DIR)" --m1-runtime-dir "$(abspath $(M1_RUNTIME_DIR))" --consenter-certs "$(M2_CHANNEL_DIR)/consenter-certs"
+
+test-m2-current-config:
+	python3 scripts/test-verify-m2-current-config.py --initial-inspect "$(M2_CHANNEL_DIR)/inspect-block.json" --m1-runtime-dir "$(abspath $(M1_RUNTIME_DIR))" --consenter-certs "$(M2_CHANNEL_DIR)/consenter-certs"
 
 prepare-m2-nodes:
 	python3 scripts/prepare-m2-nodes.py prepare --m1-runtime "$(M2_SOURCE_RUNTIME_DIR)" --output-runtime "$(M2_OUTPUT_RUNTIME_DIR)" --secrets-dir "$(M2_SECRETS_DIR)"

@@ -136,6 +136,8 @@ def check_organizations(channel, public_msps):
         group = application["groups"][msp_id]
         require(set(group["values"]) == {"MSP", "AnchorPeers"},
                 f"{msp_id}: unexpected organization value")
+        require(set(group["policies"]) == {"Readers", "Writers", "Admins", "Endorsement"},
+                f"{msp_id}: unexpected organization policy")
         check_msp(group, msp_id, public_msps)
         org = ORG_NAMES[msp_id]
         require(group["values"]["AnchorPeers"]["value"] == {
@@ -149,6 +151,8 @@ def check_organizations(channel, public_msps):
     group = orderer["groups"]["OrdererMSP"]
     require(set(group["values"]) == {"MSP", "Endpoints"},
             "OrdererMSP: unexpected organization value")
+    require(set(group["policies"]) == {"Readers", "Writers", "Admins", "Endorsement"},
+            "OrdererMSP: unexpected organization policy")
     check_msp(group, "OrdererMSP", public_msps)
     require(group["values"]["Endpoints"]["value"] == {
         "addresses": [f"{name}.orderer.supply.test:7050" for name in ORDERERS]},
@@ -164,13 +168,17 @@ def check_organizations(channel, public_msps):
     print("PASS: four public MSPs match M1 roots and NodeOUs; three exact anchor Peers and Orderer endpoints")
 
 
-def check_orderer(channel, consenter_certs, m1_runtime, inventory):
+def check_orderer(channel, consenter_certs, m1_runtime, inventory,
+                  expected_batch_timeout="1s"):
     orderer = channel["groups"]["Orderer"]
     values = orderer["values"]
     require(set(values) == {"BatchSize", "BatchTimeout", "Capabilities",
                             "ChannelRestrictions", "ConsensusType"},
             "Orderer values differ from reviewed initial set")
-    require(values["BatchTimeout"]["value"] == {"timeout": "1s"}, "wrong BatchTimeout")
+    require(values["ChannelRestrictions"]["value"] is None,
+            "unexpected Orderer ChannelRestrictions value")
+    require(values["BatchTimeout"]["value"] == {"timeout": expected_batch_timeout},
+            "wrong BatchTimeout")
     require(values["BatchSize"]["value"] == {
         "max_message_count": 20, "preferred_max_bytes": 524288,
         "absolute_max_bytes": 10485760}, "wrong Orderer batch limits")
@@ -204,12 +212,29 @@ def check_orderer(channel, consenter_certs, m1_runtime, inventory):
                 and "TLS Web Server Authentication" in row["extended_key_usage"]
                 and "TLS Web Client Authentication" in row["extended_key_usage"],
                 f"{name}: M1 certificate pin, SAN or TLS use differs")
-    print("PASS: three byte-pinned Raft client/server cert pairs; 1s/20/512KiB/10MiB batch limits")
+    print("PASS: three byte-pinned Raft client/server cert pairs; "
+          f"{expected_batch_timeout}/20/512KiB/10MiB batch limits")
 
 
 def check_policies(channel):
     application = channel["groups"]["Application"]
     orderer = channel["groups"]["Orderer"]
+    require(set(channel["policies"]) == {"Readers", "Writers", "Admins"},
+            "unexpected Channel policies")
+    require(set(orderer["policies"]) == {"Readers", "Writers", "Admins", "BlockValidation"},
+            "unexpected Orderer policies")
+    require(set(application["policies"]) == {"Readers", "Writers", "Admins",
+                                              "Endorsement", "LifecycleEndorsement"},
+            "unexpected Application policies")
+    require(set(channel["values"]) == {"Capabilities", "HashingAlgorithm",
+                                       "BlockDataHashingStructure"},
+            "unexpected Channel values")
+    require(set(application["values"]) == {"Capabilities", "ACLs"},
+            "unexpected Application values")
+    require(channel["values"]["HashingAlgorithm"]["value"] == {"name": "SHA256"},
+            "wrong Channel hashing algorithm")
+    require(channel["values"]["BlockDataHashingStructure"]["value"] == {
+        "width": 4294967295}, "wrong Channel block-data hashing structure")
     require(set(channel["values"]["Capabilities"]["value"]["capabilities"]) == {"V3_0"},
             "wrong Channel capability")
     require(set(application["values"]["Capabilities"]["value"]["capabilities"]) == {"V2_5"},
