@@ -448,7 +448,7 @@ def main():
         check_initial_block(args.inspect_block, m1_runtime, output_runtime, keys)
     else:
         print("NOT RUN: #17 initial-block-to-node certificate byte comparison")
-    print("NOT RUN: no Orderer, Peer, CouchDB, channel or live TLS check was started")
+    print("NOT RUN: this preflight did not start or inspect live Orderer, Peer, CouchDB, channel or TLS endpoints")
 
 
 if __name__ == "__main__":
