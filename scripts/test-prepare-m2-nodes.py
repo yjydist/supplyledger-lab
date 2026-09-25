@@ -127,6 +127,20 @@ def main():
                                fields, output_runtime, keys,
                                "Docker VM endpoint is forbidden")
         print("PASS: missing/wrong M2 builder, wrong/root delivery and Docker VM endpoint rejected")
+        system_block = (b"  system:\n    _lifecycle: enable\n"
+                        b"    cscc: enable\n    qscc: enable\n")
+        for original_fragment, replacement in (
+            (system_block, b""),
+            (b"    _lifecycle: enable\n", b""),
+            (b"    cscc: enable\n", b"    cscc: disable\n"),
+            (b"    qscc: enable\n", b""),
+            (b"    qscc: enable\n", b"    qscc: enable\n    lscc: enable\n"),
+            (b"ledger:\n", b"system:\n  cscc: enable\nledger:\n"),
+        ):
+            expect_field_rejection(peer_rendered, original_fragment, replacement,
+                                   fields, output_runtime, keys,
+                                   "chaincode.system must enable only")
+        print("PASS: missing/disabled/extra/root-level system chaincodes rejected in rendered Peer")
         expect_field_rejection(
             output_runtime / "network-config/orderer0.yaml",
             b"  Cluster:\n    ClientCertificate:",
@@ -213,6 +227,28 @@ def main():
             finally:
                 render_globals["ROOT"] = original_root
         print("PASS: source M2 builder, nested delivery and absent Docker VM endpoint enforced")
+        for original_fragment, replacement in (
+            (system_block, b""),
+            (b"    _lifecycle: enable\n", b""),
+            (b"    cscc: enable\n", b"    cscc: disable\n"),
+            (b"    qscc: enable\n", b""),
+            (b"    qscc: enable\n", b"    qscc: enable\n    lscc: enable\n"),
+            (b"ledger:\n", b"system:\n  cscc: enable\nledger:\n"),
+        ):
+            assert original_peer_source.count(original_fragment) == 1
+            peer_source.write_bytes(original_peer_source.replace(
+                original_fragment, replacement, 1))
+            try:
+                render_globals["ROOT"] = source_root
+                try:
+                    render("peer0-seller", keys)
+                except ValueError as error:
+                    assert "source chaincode.system must enable only" in str(error), str(error)
+                else:
+                    raise AssertionError("unsafe source Peer system chaincode setting accepted")
+            finally:
+                render_globals["ROOT"] = original_root
+        print("PASS: missing/disabled/extra/root-level system chaincodes rejected in source Peer")
         if args.inspect_block:
             assert "three effective Raft TLS cert paths and PEM bytes" in checked.stdout
             print("PASS: rendered Orderer TLS certs match native decoded #17 block")
@@ -260,12 +296,13 @@ def main():
         peer.write_bytes(original)
         print("PASS: mismatched Peer/CouchDB secret rejected without disclosure")
         for override in (b"CORE_VM_ENDPOINT=unix:///var/run/docker.sock\n",
-                         b"CORE_CHAINCODE_EXTERNALBUILDERS=[]\n"):
+                         b"CORE_CHAINCODE_EXTERNALBUILDERS=[]\n",
+                         b"CORE_CHAINCODE_SYSTEM_CSCC=disable\n"):
             peer.write_bytes(original + override)
             rejected = run("verify", m1_runtime, output_runtime, secrets_dir)
             assert rejected.returncode == 1 and "unexpected private env key" in rejected.stderr
         peer.write_bytes(original)
-        print("PASS: private Peer env cannot override VM endpoint or external builders")
+        print("PASS: private Peer env cannot override VM, builder or system chaincodes")
 
         rendered = output_runtime / "network-config/orderer0.yaml"
         original = rendered.read_bytes()

@@ -73,6 +73,11 @@ def main():
          lambda text: replace_once(text, "  peer0-seller:\n    <<: *peer\n",
                                    '  peer0-seller:\n    <<: *peer\n'
                                    '    environment: {CORE_CHAINCODE_EXTERNALBUILDERS: "[]"}\n')),
+        ("Peer system-chaincode environment override",
+         "environment could override TLS/MSP",
+         lambda text: replace_once(text, "  peer0-seller:\n    <<: *peer\n",
+                                   '  peer0-seller:\n    <<: *peer\n'
+                                   '    environment: {CORE_CHAINCODE_SYSTEM_CSCC: "disable"}\n')),
         ("writable M2 deny-all builder mount", "writable bind",
          lambda text: replace_once(
              text,

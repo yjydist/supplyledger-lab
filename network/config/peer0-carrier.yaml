@@ -51,6 +51,11 @@ ledger:
   snapshots:
     rootDir: /var/hyperledger/production/snapshots
 chaincode:
+  # Fabric v3.1.5 deploys these built-in system chaincodes in process.
+  system:
+    _lifecycle: enable
+    cscc: enable
+    qscc: enable
   # M2 denies all package installs. M3 #22 supplies the functional own builder.
   externalBuilders:
     - {name: m2-chaincode-disabled, path: /opt/supplyledger/m2-chaincode-disabled}

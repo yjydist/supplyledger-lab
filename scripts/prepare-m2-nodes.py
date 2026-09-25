@@ -33,11 +33,25 @@ PEER_BUILDER = (
     "{name: m2-chaincode-disabled, "
     "path: /opt/supplyledger/m2-chaincode-disabled}"
 )
+PEER_SYSTEM = {
+    ("chaincode", "system"): "",
+    ("chaincode", "system", "_lifecycle"): "enable",
+    ("chaincode", "system", "cscc"): "enable",
+    ("chaincode", "system", "qscc"): "enable",
+}
 
 
 def require(condition, message):
     if not condition:
         raise ValueError(message)
+
+
+def check_peer_system(scalars, name, source=False):
+    observed = {field: value for field, value in scalars.items()
+                if field[:2] == ("chaincode", "system") or field[:1] == ("system",)}
+    require(observed == PEER_SYSTEM,
+            f"{name}: {'source ' if source else ''}chaincode.system must enable only "
+            "_lifecycle, cscc and qscc")
 
 
 def mode(path):
@@ -215,6 +229,7 @@ def rendered_config(name, keys):
                 f"{name}: source peer.deliveryclient.blockGossipEnabled must be false")
         require(source_lists.get(("chaincode", "externalBuilders")) == [PEER_BUILDER],
                 f"{name}: source must select only the M2 deny-all external builder")
+        check_peer_system(source_scalars, name, source=True)
         require(("vm", "endpoint") not in source_scalars,
                 f"{name}: source Docker VM endpoint is forbidden")
     data = template.read_text()
@@ -277,9 +292,11 @@ def yaml_fields(path):
             continue
         require(":" in item, f"unexpected YAML source line: {path}")
         name, value = item.split(":", 1)
-        require(re.fullmatch(r"[A-Za-z][A-Za-z0-9]*", name) is not None,
+        parent_key = tuple(parent_name for _, parent_name in parents)
+        require(re.fullmatch(r"[A-Za-z][A-Za-z0-9]*", name) is not None
+                or (name == "_lifecycle" and parent_key == ("chaincode", "system")),
                 f"unexpected YAML key: {path}")
-        key = tuple(name for _, name in parents) + (name,)
+        key = parent_key + (name,)
         require(key not in scalars, f"duplicate YAML key: {path}")
         scalars[key] = value.strip()
         parents.append((indent, name))
@@ -389,6 +406,7 @@ def check_node_fields(output_runtime, keys):
                 f"{name}: root-level deliveryclient is ignored by Fabric")
         require(lists.get(("chaincode", "externalBuilders")) == [PEER_BUILDER],
                 f"{name}: wrong M2 deny-all external builder")
+        check_peer_system(scalars, name)
         require(("vm", "endpoint") not in scalars,
                 f"{name}: Docker VM endpoint is forbidden")
         require(("ledger", "state", "couchDBConfig", "username") not in scalars
