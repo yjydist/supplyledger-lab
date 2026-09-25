@@ -2,7 +2,9 @@
 """Read-only M2 Compose policy check; live container inspection is separate."""
 
 import json
+import hashlib
 import re
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -22,6 +24,11 @@ COMPOSE = (
     "-f", "compose/ca.yaml", "-f", "compose/network.yaml", "--profile",
     "bootstrap", "--profile", "ca",
 )
+M2_BUILDER_HASHES = {
+    "detect": "581ef8cf5c519b603a5b116aa4d7e48aff620249704d77b8458b7cb0074ae33f",
+    "build": "d322c173f8f7708acf3691dd70aae39a9251662d2064aecae13e2066209fbc14",
+    "release": "76377bfa9730dab505a56e7f525e9cca0fcb1edb90131a431a3e1649c5a6f587",
+}
 
 
 def require(condition, message):
@@ -34,6 +41,29 @@ def locked_image(key):
     match = re.search(rf"(?m)^  {re.escape(key)}:\n    reference: (\S+)$", lock)
     require(match is not None, f"version lock has no image reference for {key}")
     return match.group(1)
+
+
+def check_m2_builder():
+    directory = ROOT / "builders/m2-chaincode-disabled"
+    bin_dir = directory / "bin"
+    for path in (directory, bin_dir):
+        require(path.is_dir() and not path.is_symlink()
+                and stat.S_IMODE(path.stat().st_mode) == 0o755,
+                f"missing or linked M2 deny-all builder directory: {path}")
+    require({path.name for path in directory.iterdir()} == {"bin"},
+            "unexpected M2 deny-all builder root entry")
+    require({path.name for path in bin_dir.iterdir()} == set(M2_BUILDER_HASHES),
+            "unexpected M2 deny-all builder program")
+    for name, expected_hash in M2_BUILDER_HASHES.items():
+        path = bin_dir / name
+        require(path.is_file() and not path.is_symlink()
+                and stat.S_IMODE(path.stat().st_mode) == 0o755,
+                f"unsafe M2 deny-all builder program mode: {name}")
+        data = path.read_bytes()
+        require(data.startswith(b"#!/bin/sh\n")
+                and hashlib.sha256(data).hexdigest() == expected_hash,
+                f"M2 deny-all builder program changed: {name}")
+    print("PASS: three tracked M2 deny-all builder programs have pinned bytes and mode 0755")
 
 
 def compose_model():
@@ -155,6 +185,8 @@ def check_nodes(model):
             check_service_network(service, {"fabric": host, org: host})
             check_mounts(service, f"{name}-ledger", "/var/hyperledger/production", {
                 "/etc/hyperledger/fabric/core.yaml": f".runtime/network-config/{name}.yaml",
+                "/opt/supplyledger/m2-chaincode-disabled":
+                    "builders/m2-chaincode-disabled",
                 "/run/supply/msp": f".runtime/identities/{org}/{org}-peer0/msp",
                 "/run/supply/tls": f".runtime/identities/{org}/{org}-peer0-tls/msp",
                 "/run/supply/orderer-tls-root.pem": ".runtime/trust/orderer-tls-ca.pem",
@@ -178,6 +210,7 @@ def check_nodes(model):
 
 
 def main():
+    check_m2_builder()
     model = compose_model()
     check_networks(model)
     check_volumes(model)

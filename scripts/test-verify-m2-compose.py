@@ -63,6 +63,24 @@ def main():
              '    volumes: ["/var/run/docker.sock:/var/run/docker.sock"]\n  orderer0:')),
         ("Peer TLS-off environment override", "environment could override TLS/MSP",
          peer_tls_off),
+        ("Peer Docker VM endpoint environment override",
+         "environment could override TLS/MSP",
+         lambda text: replace_once(text, "  peer0-seller:\n    <<: *peer\n",
+                                   '  peer0-seller:\n    <<: *peer\n'
+                                   '    environment: {CORE_VM_ENDPOINT: "unix:///var/run/docker.sock"}\n')),
+        ("Peer external-builder environment override",
+         "environment could override TLS/MSP",
+         lambda text: replace_once(text, "  peer0-seller:\n    <<: *peer\n",
+                                   '  peer0-seller:\n    <<: *peer\n'
+                                   '    environment: {CORE_CHAINCODE_EXTERNALBUILDERS: "[]"}\n')),
+        ("writable M2 deny-all builder mount", "writable bind",
+         lambda text: replace_once(
+             text,
+             "target: /opt/supplyledger/m2-chaincode-disabled\n        read_only: true",
+             "target: /opt/supplyledger/m2-chaincode-disabled\n        read_only: false")),
+        ("wrong M2 deny-all builder source", "unexpected source",
+         lambda text: replace_once(text, "source: ../builders/m2-chaincode-disabled",
+                                   "source: ../builders/unreviewed-builder")),
         ("cross-org Peer credential file", "wrong private CouchDB credential file",
          lambda text: replace_once(text,
                                    "../.secrets/peer-couchdb/seller.env",
@@ -85,6 +103,8 @@ def main():
         for relative in ("versions.lock.yaml", "compose/bootstrap.yaml", "compose/ca.yaml",
                          "scripts/verify-m2-compose.py"):
             shutil.copy2(ROOT / relative, directory / relative)
+        shutil.copytree(ROOT / "builders/m2-chaincode-disabled",
+                        directory / "builders/m2-chaincode-disabled")
         target = directory / "compose/network.yaml"
         target.write_text(original)
         baseline = run_checker(directory)
@@ -99,6 +119,18 @@ def main():
                                                   for error in expected_errors), (
                 label, result.returncode, result.stderr)
             print(f"PASS: checker rejected {label}")
+        builder = directory / "builders/m2-chaincode-disabled/bin/detect"
+        original_builder = builder.read_bytes()
+        builder.write_bytes(original_builder.replace(b"exit 1\n", b"exit 0\n"))
+        result = run_checker(directory)
+        assert result.returncode == 1 and "builder program changed" in result.stderr
+        print("PASS: checker rejected accepting M2 chaincode detector")
+        builder.write_bytes(original_builder)
+        extra = directory / "builders/m2-chaincode-disabled/unreviewed-file"
+        extra.write_text("unexpected\n")
+        result = run_checker(directory)
+        assert result.returncode == 1 and "unexpected M2 deny-all builder root entry" in result.stderr
+        print("PASS: checker rejected extra file in read-only Peer builder bind")
 
 
 if __name__ == "__main__":

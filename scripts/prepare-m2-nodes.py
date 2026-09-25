@@ -29,6 +29,10 @@ PEER_BCCSP = {
     ("peer", "BCCSP", "SW", "FileKeyStore", "KeyStore"):
         "/run/supply/msp/keystore",
 }
+PEER_BUILDER = (
+    "{name: m2-chaincode-disabled, "
+    "path: /opt/supplyledger/m2-chaincode-disabled}"
+)
 
 
 def require(condition, message):
@@ -202,10 +206,17 @@ def rendered_config(name, keys):
         require(source_scalars.get(("ChannelParticipation", "MaxRequestBodySize")) == "1 MB",
                 f"{name}: source MaxRequestBodySize must be 1 MB")
     else:
-        source_scalars, _ = yaml_fields(template)
+        source_scalars, source_lists = yaml_fields(template)
         for field, value in PEER_BCCSP.items():
             require(source_scalars.get(field) == value,
                     f"{name}: wrong source node field {'.'.join(field)}")
+        require(source_scalars.get(("peer", "deliveryclient", "blockGossipEnabled"))
+                == "false" and ("deliveryclient", "blockGossipEnabled") not in source_scalars,
+                f"{name}: source peer.deliveryclient.blockGossipEnabled must be false")
+        require(source_lists.get(("chaincode", "externalBuilders")) == [PEER_BUILDER],
+                f"{name}: source must select only the M2 deny-all external builder")
+        require(("vm", "endpoint") not in source_scalars,
+                f"{name}: source Docker VM endpoint is forbidden")
     data = template.read_text()
     replacements = (
         {"__ORDERER_TLS_KEY__": keys[(name, "tls")],
@@ -358,7 +369,7 @@ def check_node_fields(output_runtime, keys):
                 "/run/supply/peer-tls-root.pem",
             ("peer", "tls", "clientCert", "file"): tls_cert,
             ("peer", "tls", "clientKey", "file"): tls_key,
-            ("deliveryclient", "blockGossipEnabled"): "false",
+            ("peer", "deliveryclient", "blockGossipEnabled"): "false",
             ("ledger", "state", "stateDatabase"): "CouchDB",
             ("ledger", "state", "couchDBConfig", "couchDBAddress"):
                 f"couchdb0.{org}.supply.test:5984",
@@ -374,6 +385,12 @@ def check_node_fields(output_runtime, keys):
         for field, value in expected.items():
             require(scalars.get(field) == value,
                     f"{name}: wrong node field {'.'.join(field)}")
+        require(("deliveryclient", "blockGossipEnabled") not in scalars,
+                f"{name}: root-level deliveryclient is ignored by Fabric")
+        require(lists.get(("chaincode", "externalBuilders")) == [PEER_BUILDER],
+                f"{name}: wrong M2 deny-all external builder")
+        require(("vm", "endpoint") not in scalars,
+                f"{name}: Docker VM endpoint is forbidden")
         require(("ledger", "state", "couchDBConfig", "username") not in scalars
                 and ("ledger", "state", "couchDBConfig", "password") not in scalars,
                 f"{name}: CouchDB credentials embedded in YAML")

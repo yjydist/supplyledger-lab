@@ -1,0 +1,4 @@
+#!/bin/sh
+# Defense in depth if Fabric invokes build despite detect rejecting a package.
+printf '%s\n' 'M2 chaincode builder disabled; use the M3 #22 builder' >&2
+exit 1

@@ -325,6 +325,153 @@ done
 
 After independent review of those checks, retry **only** the failed Seller Peer with `docker compose -p supplyledger -f compose/bootstrap.yaml -f compose/ca.yaml -f compose/network.yaml --profile bootstrap --profile ca up -d --no-deps --force-recreate peer0-seller`. Require a new running container ID, unchanged `supplyledger_peer0_seller_ledger` name/creation time, pinned image, own read-only MSP/TLS/config binds and own CouchDB credential environment without printing its values. Probe its gRPC TLS hostname and `/healthz` operations endpoint with the own TLS root/client identity; Fabric v3.1.5's [operations health check](https://github.com/hyperledger/fabric/blob/v3.1.5/docs/source/operations_service.rst#L340-L366) includes CouchDB when configured. Do not call `peer channel list` or a listening port proof of `supplychannel` readiness: #18 owns individual Peer joins. Only after Seller's reviewed startup should Buyer and Carrier Peers start one by one. Never use `reset`, change the #17 block or reissue M1 identities to fix this failure.
 
+## One-time recovery from the second Seller Peer startup failure
+
+The reviewed BCCSP migration retained all 273 M1 identity files, six credential env files, the original #17 block and decoded JSON, the three joined Orderer configs/IDs and the Seller ledger. The Seller-only force-recreate at source commit `c54a270f7dc356c96e886e4435484476eea97b30` produced a new container but exited `2`. Its ignored mode 0600 log `.runtime/m2-node-logs/peer0-seller-bccsp-container.log` shows BCCSP and CouchDB initialization, then Fabric v3.1.5's [startup guard](https://github.com/hyperledger/fabric/blob/v3.1.5/internal/peer/node/start.go#L534-L546): `VMEndpoint not set and no ExternalBuilders defined`. The log also warns that `peer.deliveryclient.blockGossipEnabled` was absent and defaulted to `true`; the old YAML placed that key at root. Retain both failed Seller logs, both old IDs and the same ledger; do not clear the initialized CouchDB databases.
+
+M2 uses the tracked `builders/m2-chaincode-disabled/bin/{detect,build,release}` as an **explicit deny-all startup bridge**. All three programs return `1` for any input. The pinned Peer image has `/bin/sh` and executes them as an unprivileged user in a network-none, read-only offline probe. The builder directory contains only `bin/` and is mounted read-only at `/opt/supplyledger/m2-chaincode-disabled` for each Peer. Each `core.yaml` selects only that named absolute-path builder, has no `vm.endpoint`, and sets `peer.deliveryclient.blockGossipEnabled:false`. The exact program bytes/modes, Compose bind, source/rendered YAML and private env schema are preflighted. The functional self-built CCaaS builder, custom Peer image, chaincode installation and Peer→CCaaS mTLS remain M3 #22 **NOT RUN**.
+
+Only after this source change is independently reviewed and integrated into the retained main checkout, stage new YAMLs in a fresh ignored directory. Require the second Seller container still `exited:2`, Buyer/Carrier Peer containers absent and the three Orderers/CouchDBs running. Check exactly six original 0600 credential env files before `prepare-m2-nodes`, since prepare mode could create a missing file. Record a fresh M1/env/block/Orderer manifest and container/volume IDs. Never move running Orderer configs or a named ledger. The stage and archive paths must be absent.
+
+~~~sh
+set -eu
+umask 077
+test "$(docker inspect --format '{{.State.Status}}:{{.State.ExitCode}}' supplyledger-peer0-seller-1)" = exited:2
+test -f .runtime/m2-node-logs/peer0-seller-bccsp-container.log
+test ! -e .runtime/m2-peer-deny-stage
+test ! -L .runtime/m2-peer-deny-stage
+test ! -e .runtime/m2-node-logs/network-config-before-peer-deny
+test ! -L .runtime/m2-node-logs/network-config-before-peer-deny
+for org in buyer carrier; do
+  if docker inspect "supplyledger-peer0-${org}-1" > /dev/null 2>&1; then
+    printf 'FAIL: peer0-%s container exists; inspect before config replacement\n' "$org" >&2
+    exit 1
+  fi
+done
+python3 - <<'INNER'
+from pathlib import Path
+from stat import S_IMODE
+root = Path('.secrets')
+assert root.is_dir() and not root.is_symlink() and S_IMODE(root.stat().st_mode) == 0o700
+for subdir in ('couchdb', 'peer-couchdb'):
+    directory = root / subdir
+    assert directory.is_dir() and not directory.is_symlink()
+    assert S_IMODE(directory.stat().st_mode) == 0o700
+    assert {p.name for p in directory.iterdir()} == {'seller.env', 'buyer.env', 'carrier.env'}
+    for path in directory.iterdir():
+        assert path.is_file() and not path.is_symlink()
+        assert S_IMODE(path.stat().st_mode) == 0o600
+print('PASS: six original credential files exist and cannot be regenerated')
+INNER
+git rev-parse HEAD > .runtime/m2-node-logs/peer-deny-source-commit
+docker inspect --format '{{.Id}}' supplyledger-peer0-seller-1 > .runtime/m2-node-logs/peer0-seller-before-peer-deny-id
+docker volume inspect --format '{{.Name}} {{.CreatedAt}}' supplyledger_peer0_seller_ledger > .runtime/m2-node-logs/peer0-seller-ledger-before-peer-deny
+for name in orderer0 orderer1 orderer2 couchdb0-seller couchdb0-buyer couchdb0-carrier; do
+  test "$(docker inspect --format '{{.State.Status}}' "supplyledger-${name}-1")" = running
+  docker inspect --format '{{.Id}}' "supplyledger-${name}-1" > ".runtime/m2-node-logs/${name}-before-peer-deny-id"
+done
+make verify-m1 > .runtime/m2-node-logs/m1-before-peer-deny.log 2>&1
+python3 - <<'INNER' > .runtime/m2-node-logs/m1-identity-before-peer-deny.sha256
+from hashlib import sha256
+from pathlib import Path
+root = Path('.runtime/identities')
+for path in sorted(root.rglob('*')):
+    assert not path.is_symlink(), path
+    if path.is_file():
+        print(sha256(path.read_bytes()).hexdigest(), path.relative_to(root))
+INNER
+shasum -a 256 .secrets/couchdb/*.env .secrets/peer-couchdb/*.env > .runtime/m2-node-logs/m2-env-before-peer-deny.sha256
+shasum -a 256 .runtime/channel/supplychannel.block .runtime/channel/inspect-block.json > .runtime/m2-node-logs/channel-before-peer-deny.sha256
+shasum -a 256 .runtime/network-config/orderer*.yaml > .runtime/m2-node-logs/orderer-config-before-peer-deny.sha256
+make network-config
+make prepare-m2-nodes M2_OUTPUT_RUNTIME_DIR=.runtime/m2-peer-deny-stage
+make verify-m2-nodes M2_OUTPUT_RUNTIME_DIR=.runtime/m2-peer-deny-stage
+make verify-m2-node-block M2_OUTPUT_RUNTIME_DIR=.runtime/m2-peer-deny-stage M2_INSPECT_BLOCK=.runtime/channel/inspect-block.json
+~~~
+
+Compare the stage against the old rendered YAMLs before replacing any bind source. The three Orderers must be byte-identical. Each Peer may differ **only** by moving `blockGossipEnabled:false` under `peer.deliveryclient` and replacing the empty external-builder list with the reviewed sole deny-all builder. The builder programs are tracked as mode 0755 despite the repository's general `bin/` ignore rule; `make network-config` checks their exact bytes, directory contents/modes and read-only mounts.
+
+~~~sh
+python3 - <<'INNER'
+from pathlib import Path
+old_dir = Path('.runtime/network-config')
+stage_dir = Path('.runtime/m2-peer-deny-stage/network-config')
+assert {p.name for p in old_dir.iterdir()} == {p.name for p in stage_dir.iterdir()}
+for index in range(3):
+    name = f'orderer{index}.yaml'
+    assert (stage_dir / name).read_bytes() == (old_dir / name).read_bytes(), name
+for org in ('seller', 'buyer', 'carrier'):
+    name = f'peer0-{org}.yaml'
+    old = (old_dir / name).read_bytes()
+    root_delivery = b'deliveryclient:\n  blockGossipEnabled: false\n'
+    old_builder = (b'chaincode:\n'
+                   b'  # M3 #22 supplies the external builder and CCaaS image before deployment.\n'
+                   b'  externalBuilders: []\n')
+    peer_tls_anchor = b'    state:\n      enabled: false\n  tls:\n'
+    assert old.count(root_delivery) == 1 and old.count(peer_tls_anchor) == 1, name
+    assert old.count(old_builder) == 1, name
+    expected = old.replace(peer_tls_anchor,
+                           b'    state:\n      enabled: false\n'
+                           b'  deliveryclient:\n    blockGossipEnabled: false\n  tls:\n', 1)
+    expected = expected.replace(root_delivery, b'', 1)
+    expected = expected.replace(old_builder,
+        b'chaincode:\n'
+        b'  # M2 denies all package installs. M3 #22 supplies the functional own builder.\n'
+        b'  externalBuilders:\n'
+        b'    - {name: m2-chaincode-disabled, path: /opt/supplyledger/m2-chaincode-disabled}\n', 1)
+    assert (stage_dir / name).read_bytes() == expected, name
+print('PASS: only three reviewed Peer delivery/builder changes; Orderers identical')
+INNER
+~~~
+
+Archive/replace **only** the three Peer YAMLs after that byte comparison. Recheck all retained inputs and six Orderer/CouchDB container IDs before any retry. Stop and preserve the stage, archive and logs if an assertion fails.
+
+~~~sh
+set -eu
+umask 077
+test "$(docker inspect --format '{{.State.Status}}:{{.State.ExitCode}}' supplyledger-peer0-seller-1)" = exited:2
+for org in buyer carrier; do
+  if docker inspect "supplyledger-peer0-${org}-1" > /dev/null 2>&1; then
+    printf 'FAIL: peer0-%s container exists; inspect before config replacement\n' "$org" >&2
+    exit 1
+  fi
+done
+mkdir -m 700 .runtime/m2-node-logs/network-config-before-peer-deny
+for org in seller buyer carrier; do
+  mv ".runtime/network-config/peer0-${org}.yaml" .runtime/m2-node-logs/network-config-before-peer-deny/
+  mv ".runtime/m2-peer-deny-stage/network-config/peer0-${org}.yaml" .runtime/network-config/
+done
+make verify-m2-nodes
+make verify-m2-node-block M2_INSPECT_BLOCK=.runtime/channel/inspect-block.json
+make network-config
+make verify-m1 > .runtime/m2-node-logs/m1-after-peer-deny.log 2>&1
+python3 - <<'INNER' > .runtime/m2-node-logs/m1-identity-after-peer-deny.sha256
+from hashlib import sha256
+from pathlib import Path
+root = Path('.runtime/identities')
+for path in sorted(root.rglob('*')):
+    assert not path.is_symlink(), path
+    if path.is_file():
+        print(sha256(path.read_bytes()).hexdigest(), path.relative_to(root))
+INNER
+cmp .runtime/m2-node-logs/m1-identity-before-peer-deny.sha256 .runtime/m2-node-logs/m1-identity-after-peer-deny.sha256
+shasum -a 256 .secrets/couchdb/*.env .secrets/peer-couchdb/*.env > .runtime/m2-node-logs/m2-env-after-peer-deny.sha256
+cmp .runtime/m2-node-logs/m2-env-before-peer-deny.sha256 .runtime/m2-node-logs/m2-env-after-peer-deny.sha256
+shasum -a 256 .runtime/channel/supplychannel.block .runtime/channel/inspect-block.json > .runtime/m2-node-logs/channel-after-peer-deny.sha256
+cmp .runtime/m2-node-logs/channel-before-peer-deny.sha256 .runtime/m2-node-logs/channel-after-peer-deny.sha256
+shasum -a 256 .runtime/network-config/orderer*.yaml > .runtime/m2-node-logs/orderer-config-after-peer-deny.sha256
+cmp .runtime/m2-node-logs/orderer-config-before-peer-deny.sha256 .runtime/m2-node-logs/orderer-config-after-peer-deny.sha256
+docker volume inspect --format '{{.Name}} {{.CreatedAt}}' supplyledger_peer0_seller_ledger > .runtime/m2-node-logs/peer0-seller-ledger-after-peer-deny
+cmp .runtime/m2-node-logs/peer0-seller-ledger-before-peer-deny .runtime/m2-node-logs/peer0-seller-ledger-after-peer-deny
+for name in orderer0 orderer1 orderer2 couchdb0-seller couchdb0-buyer couchdb0-carrier; do
+  test "$(docker inspect --format '{{.State.Status}}' "supplyledger-${name}-1")" = running
+  docker inspect --format '{{.Id}}' "supplyledger-${name}-1" > ".runtime/m2-node-logs/${name}-after-peer-deny-id"
+  cmp ".runtime/m2-node-logs/${name}-before-peer-deny-id" ".runtime/m2-node-logs/${name}-after-peer-deny-id"
+done
+~~~
+
+After independent review of the preserved-state checkpoint, use a separate native `docker compose -p supplyledger -f compose/bootstrap.yaml -f compose/ca.yaml -f compose/network.yaml --profile bootstrap --profile ca up -d --no-deps --force-recreate peer0-seller` invocation. Require a new **running** Seller ID, the same named ledger name/creation time, pinned image, exact two networks, own read-only config/MSP/TLS/public-root binds **and** the sole read-only deny-all builder bind, no Docker socket or published port. Its log must no longer contain either startup failure or the `peer.deliveryclient.blockGossipEnabled` default-to-true warning. From a scoped `supply-seller` tools container, verify the Peer 7051 certificate against the own TLS root and DNS name; use that own TLS client identity for operations `https://peer0.seller.supply.test:9444/healthz`. Require verified TLS, HTTP 200 and `status=OK`; Fabric v3.1.5 [registers a CouchDB health check](https://github.com/hyperledger/fabric/blob/v3.1.5/docs/source/operations_service.rst#L340-L366) when configured. A no-client-certificate operations request must fail at TLS. Keep full logs ignored and mode 0600; never print private key or CouchDB password values. Buyer/Carrier Peers and all Peer joins remain on hold until Seller's checkpoint is reviewed. A listener or `/healthz` alone does not prove a local `supplychannel` ledger; #18 owns each native `peer channel join`.
+
 ## Native first-run sequence and remaining steps
 
 These are separate operations, not a `make network-up` shortcut. Before each operation, record source commit, version-lock SHA-256, image digest, Compose tier, command/exit code and redacted output under `evidence/m2/`.

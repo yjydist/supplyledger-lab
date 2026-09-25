@@ -220,6 +220,11 @@ services:
         read_only: true
         bind: {create_host_path: false}
       - type: bind
+        source: ../builders/m2-chaincode-disabled
+        target: /opt/supplyledger/m2-chaincode-disabled
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
         source: ../.runtime/identities/seller/seller-peer0/msp
         target: /run/supply/msp
         read_only: true
@@ -259,6 +264,11 @@ services:
         read_only: true
         bind: {create_host_path: false}
       - type: bind
+        source: ../builders/m2-chaincode-disabled
+        target: /opt/supplyledger/m2-chaincode-disabled
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
         source: ../.runtime/identities/buyer/buyer-peer0/msp
         target: /run/supply/msp
         read_only: true
@@ -295,6 +305,11 @@ services:
       - type: bind
         source: ../.runtime/network-config/peer0-carrier.yaml
         target: /etc/hyperledger/fabric/core.yaml
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ../builders/m2-chaincode-disabled
+        target: /opt/supplyledger/m2-chaincode-disabled
         read_only: true
         bind: {create_host_path: false}
       - type: bind

@@ -1,0 +1,5 @@
+#!/bin/sh
+# M2 startup bridge: reject every chaincode package until M3 #22 supplies the
+# repository-built CCaaS external builder and its reviewed runtime image.
+printf '%s\n' 'M2 chaincode builder disabled; use the M3 #22 builder' >&2
+exit 1

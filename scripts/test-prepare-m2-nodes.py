@@ -103,6 +103,30 @@ def main():
             fields, output_runtime, keys,
             "wrong node field peer.BCCSP.SW.FileKeyStore.KeyStore")
         print("PASS: missing, non-SW and cross-organization Peer BCCSP keystore rejected")
+        builder = (b"    - {name: m2-chaincode-disabled, "
+                   b"path: /opt/supplyledger/m2-chaincode-disabled}\n")
+        for replacement in (b"", builder.replace(
+                b"/opt/supplyledger/m2-chaincode-disabled", b"/opt/unknown")):
+            expect_field_rejection(peer_rendered, builder, replacement,
+                                   fields, output_runtime, keys,
+                                   "wrong M2 deny-all external builder")
+        delivery = b"  deliveryclient:\n    blockGossipEnabled: false\n"
+        expect_field_rejection(peer_rendered, delivery, b"",
+                               fields, output_runtime, keys,
+                               "wrong node field peer.deliveryclient.blockGossipEnabled")
+        expect_field_rejection(peer_rendered, b"    blockGossipEnabled: false\n",
+                               b"    blockGossipEnabled: true\n",
+                               fields, output_runtime, keys,
+                               "wrong node field peer.deliveryclient.blockGossipEnabled")
+        expect_field_rejection(peer_rendered, b"ledger:\n",
+                               b"deliveryclient:\n  blockGossipEnabled: false\nledger:\n",
+                               fields, output_runtime, keys,
+                               "root-level deliveryclient is ignored")
+        expect_field_rejection(peer_rendered, b"chaincode:\n",
+                               b"vm:\n  endpoint: unix:///var/run/docker.sock\nchaincode:\n",
+                               fields, output_runtime, keys,
+                               "Docker VM endpoint is forbidden")
+        print("PASS: missing/wrong M2 builder, wrong/root delivery and Docker VM endpoint rejected")
         expect_field_rejection(
             output_runtime / "network-config/orderer0.yaml",
             b"  Cluster:\n    ClientCertificate:",
@@ -162,6 +186,33 @@ def main():
             finally:
                 render_globals["ROOT"] = original_root
         print("PASS: missing, non-SW and cross-organization source Peer BCCSP rejected")
+        for original_fragment, replacement, expected_error in (
+            (builder, b"", "source must select only the M2 deny-all external builder"),
+            (builder, builder.replace(
+                b"/opt/supplyledger/m2-chaincode-disabled", b"/opt/unknown"),
+             "source must select only the M2 deny-all external builder"),
+            (b"ledger:\n", b"deliveryclient:\n  blockGossipEnabled: false\nledger:\n",
+             "source peer.deliveryclient.blockGossipEnabled must be false"),
+            (b"    blockGossipEnabled: false\n", b"    blockGossipEnabled: true\n",
+             "source peer.deliveryclient.blockGossipEnabled must be false"),
+            (b"chaincode:\n",
+             b"vm:\n  endpoint: unix:///var/run/docker.sock\nchaincode:\n",
+             "source Docker VM endpoint is forbidden"),
+        ):
+            assert original_peer_source.count(original_fragment) == 1
+            peer_source.write_bytes(original_peer_source.replace(
+                original_fragment, replacement, 1))
+            try:
+                render_globals["ROOT"] = source_root
+                try:
+                    render("peer0-seller", keys)
+                except ValueError as error:
+                    assert expected_error in str(error), str(error)
+                else:
+                    raise AssertionError(f"unsafe source Peer setting accepted: {expected_error}")
+            finally:
+                render_globals["ROOT"] = original_root
+        print("PASS: source M2 builder, nested delivery and absent Docker VM endpoint enforced")
         if args.inspect_block:
             assert "three effective Raft TLS cert paths and PEM bytes" in checked.stdout
             print("PASS: rendered Orderer TLS certs match native decoded #17 block")
@@ -208,6 +259,13 @@ def main():
         assert password not in mismatch.stderr
         peer.write_bytes(original)
         print("PASS: mismatched Peer/CouchDB secret rejected without disclosure")
+        for override in (b"CORE_VM_ENDPOINT=unix:///var/run/docker.sock\n",
+                         b"CORE_CHAINCODE_EXTERNALBUILDERS=[]\n"):
+            peer.write_bytes(original + override)
+            rejected = run("verify", m1_runtime, output_runtime, secrets_dir)
+            assert rejected.returncode == 1 and "unexpected private env key" in rejected.stderr
+        peer.write_bytes(original)
+        print("PASS: private Peer env cannot override VM endpoint or external builders")
 
         rendered = output_runtime / "network-config/orderer0.yaml"
         original = rendered.read_bytes()
