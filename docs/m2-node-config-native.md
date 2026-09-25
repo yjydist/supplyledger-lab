@@ -18,11 +18,77 @@ make verify-m2-node-block M2_SOURCE_RUNTIME_DIR="$M2_SOURCE_RUNTIME_DIR" \
 
 `prepare-m2-nodes` validates the fifteen existing node ECert/TLS certificate-key pairs it needs against the #10 public certificate inventory, checks each keystore contains exactly one 0600 nonsymlink `*_sk` file, then writes six mode 0600 configs to `.runtime/network-config/`. Existing different output fails closed; no file is overwritten. The generated paths remain inside each node's own read-only MSP/TLS bind. The Orderer cluster client certificate is its `ordererN-tls` leaf and the shared 7050 cluster server listener uses that same `General.TLS.Certificate`; these bytes must match both #17 consenter PEM fields. The 9443 admin server uses its separate `ordererN-admin-server-tls` leaf. Its `ClientRootCAs` contains **only** the measured dedicated `orderer-admin-tls-ca` root.
 
+Fabric CA gives each TLS MSP `tlscacerts` file an enrollment-specific basename. Node YAML therefore uses stable read-only public root binds: `/run/supply/client-roots/orderer.pem` for Orderer outbound TLS, and each Peer's own `/run/supply/peer-tls-root.pem` for its TLS and operations configuration. The Compose checker pins every bind to the measured `.runtime/trust/<org>-tls-ca.pem` source.
+
 The same preparation creates three distinct random CouchDB admin passwords in ignored `.secrets/couchdb/<org>.env` and a corresponding ignored `.secrets/peer-couchdb/<org>.env` for each Peer. Directory modes are 0700 and file modes are 0600. Each Peer receives only its own `CORE_LEDGER_STATE_COUCHDBCONFIG_USERNAME` and `CORE_LEDGER_STATE_COUCHDBCONFIG_PASSWORD`; its CouchDB receives the matching `COUCHDB_USER` and `COUCHDB_PASSWORD`. Rerunning preparation verifies and retains existing secrets byte-for-byte; a mismatch fails. Never print full `docker compose config`, `docker inspect .Config.Env`, or env file content, because those expose passwords to the host/Docker administrator. The latter remains inside ADR-004's trust boundary.
 
 `make network-config` uses Compose `--no-env-resolution` and checks only source paths and service declarations. A static PASS does not prove that secrets or generated node configs exist; `make verify-m2-nodes` supplies that local preflight. For an isolated checkout, first-run service startup must occur only after the reviewed #17 NET-03 artifact and this branch are integrated into the checkout that owns the retained M1 runtime and volumes. Do not copy private MSPs into Git or an image build context.
 
 `verify-m2-node-block` additionally reads the **native** #17 `inspect-block.json`, checks all three decoded client/server consenter PEM byte strings against the original M1 leaf files, and verifies the effective Orderer cluster client and shared-listener server certificate paths in the rendered node YAML. It requires the native artifact; a missing artifact must remain NOT RUN. `make test-m2-nodes M2_SOURCE_RUNTIME_DIR="$M2_SOURCE_RUNTIME_DIR" M2_INSPECT_BLOCK=<path>` performs the same comparison using ephemeral node configs and credentials in a temporary directory and rejects a modified consenter certificate.
+
+## One-time recovery from the first Orderer0 root-path failure
+
+The first native `orderer0` process at source commit `f7960652b809eaedd53a637445cb583c6f0cda3e` exited while reading a guessed TLS MSP root filename. Its failed container, six rendered YAMLs and ignored logs still exist in the retained main runtime. After the reviewed root-path correction is integrated, `prepare-m2-nodes` must reject those old rendered YAMLs rather than silently overwrite them. Perform this explicit one-time replacement before retrying. Do not touch M1 identities, the six existing credential env files, or the named ledger volume.
+
+Run these commands in the integrated main checkout. Stop if any assertion fails. The archived directory must not already exist; this keeps a repeated attempt from overwriting the original failed input. The source commit, failed container ID, original config hashes, secret-file hashes and named-volume identity stay in ignored `.runtime/m2-node-logs/` alongside the original failure logs.
+
+~~~sh
+set -eu
+test -f .runtime/m2-node-logs/orderer0-first-fail.log
+test "$(docker inspect --format '{{.State.Status}}:{{.State.ExitCode}}' supplyledger-orderer0-1)" = "exited:1"
+test ! -e .runtime/m2-node-logs/network-config-before-root-fix
+umask 077
+git rev-parse HEAD > .runtime/m2-node-logs/root-fix-source-commit
+docker inspect --format '{{.Id}}' supplyledger-orderer0-1 > .runtime/m2-node-logs/orderer0-failed-id
+docker volume inspect --format '{{.Name}} {{.CreatedAt}}' supplyledger_orderer0_ledger > .runtime/m2-node-logs/orderer0-ledger-before
+shasum -a 256 .runtime/network-config/*.yaml > .runtime/m2-node-logs/network-config-before.sha256
+shasum -a 256 .secrets/couchdb/*.env .secrets/peer-couchdb/*.env > .runtime/m2-node-logs/m2-env-before.sha256
+mv .runtime/network-config .runtime/m2-node-logs/network-config-before-root-fix
+make prepare-m2-nodes
+make verify-m2-nodes
+make verify-m2-node-block M2_INSPECT_BLOCK=.runtime/channel/inspect-block.json
+shasum -a 256 .secrets/couchdb/*.env .secrets/peer-couchdb/*.env > .runtime/m2-node-logs/m2-env-after.sha256
+cmp .runtime/m2-node-logs/m2-env-before.sha256 .runtime/m2-node-logs/m2-env-after.sha256
+~~~
+
+Check that the six new files differ from the preserved failed input **only** by the reviewed root-path substitutions; the command prints no key or password. The preflight commands above also verify new directory/file modes (0700/0600), the same M1 cert-key pairs, and the #17 byte-pinned Raft certificates.
+
+~~~sh
+python3 - <<'PY'
+from pathlib import Path
+old_dir = Path(".runtime/m2-node-logs/network-config-before-root-fix")
+new_dir = Path(".runtime/network-config")
+for index in range(3):
+    name = f"orderer{index}.yaml"
+    old = (old_dir / name).read_bytes()
+    source = b"/run/supply/tls/tlscacerts/orderer-tls-ca.pem"
+    assert old.count(source) == 1, name
+    expected = old.replace(source, b"/run/supply/client-roots/orderer.pem")
+    assert (new_dir / name).read_bytes() == expected, name
+for org in ("seller", "buyer", "carrier"):
+    name = f"peer0-{org}.yaml"
+    old = (old_dir / name).read_bytes()
+    source = f"/run/supply/tls/tlscacerts/{org}-tls-ca.pem".encode()
+    assert old.count(source) == 2, name
+    expected = old.replace(source, b"/run/supply/peer-tls-root.pem")
+    assert (new_dir / name).read_bytes() == expected, name
+print("PASS: six regenerated configs contain only reviewed root-path changes")
+PY
+~~~
+
+Only after the above checks pass, explicitly recreate the **failed Orderer0 container only**. Compose's `--force-recreate` replaces its old file binds; it does not select the other Orderers, Peers or CouchDBs. Compare the container IDs and the retained named-volume identity, then inspect the new process and admin API as the next NET-04 observation. Do not use `reset` or remove a volume.
+
+~~~sh
+set -eu
+umask 077
+docker compose -p supplyledger -f compose/bootstrap.yaml -f compose/ca.yaml -f compose/network.yaml --profile bootstrap --profile ca up -d --no-deps --force-recreate orderer0
+docker inspect --format '{{.Id}}' supplyledger-orderer0-1 > .runtime/m2-node-logs/orderer0-retry-id
+! cmp -s .runtime/m2-node-logs/orderer0-failed-id .runtime/m2-node-logs/orderer0-retry-id
+docker volume inspect --format '{{.Name}} {{.CreatedAt}}' supplyledger_orderer0_ledger > .runtime/m2-node-logs/orderer0-ledger-after
+cmp .runtime/m2-node-logs/orderer0-ledger-before .runtime/m2-node-logs/orderer0-ledger-after
+test "$(docker inspect --format '{{.State.Status}}' supplyledger-orderer0-1)" = "running"
+docker inspect --format '{{.State.Status}}:{{.State.ExitCode}}' supplyledger-orderer0-1
+~~~
 
 ## Native first-run sequence to execute later
 

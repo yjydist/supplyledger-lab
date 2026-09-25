@@ -71,6 +71,12 @@ def main():
          lambda text: replace_once(text,
                                    "../.runtime/trust/orderer-admin-tls-ca.pem",
                                    "../.runtime/trust/orderer-tls-ca.pem")),
+        ("cross-org Peer TLS root", "unexpected source",
+         lambda text: replace_once(text,
+                                   "source: ../.runtime/trust/seller-tls-ca.pem\n"
+                                   "        target: /run/supply/peer-tls-root.pem",
+                                   "source: ../.runtime/trust/buyer-tls-ca.pem\n"
+                                   "        target: /run/supply/peer-tls-root.pem")),
     )
     with tempfile.TemporaryDirectory(prefix="supply-m2-compose-test-") as dirname:
         directory = Path(dirname)

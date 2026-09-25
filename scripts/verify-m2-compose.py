@@ -158,6 +158,7 @@ def check_nodes(model):
                 "/run/supply/msp": f".runtime/identities/{org}/{org}-peer0/msp",
                 "/run/supply/tls": f".runtime/identities/{org}/{org}-peer0-tls/msp",
                 "/run/supply/orderer-tls-root.pem": ".runtime/trust/orderer-tls-ca.pem",
+                "/run/supply/peer-tls-root.pem": f".runtime/trust/{org}-tls-ca.pem",
             })
         else:
             org = name.removeprefix("couchdb0-")

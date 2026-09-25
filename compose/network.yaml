@@ -234,6 +234,11 @@ services:
         target: /run/supply/orderer-tls-root.pem
         read_only: true
         bind: {create_host_path: false}
+      - type: bind
+        source: ../.runtime/trust/seller-tls-ca.pem
+        target: /run/supply/peer-tls-root.pem
+        read_only: true
+        bind: {create_host_path: false}
   peer0-buyer:
     <<: *peer
     env_file:
@@ -268,6 +273,11 @@ services:
         target: /run/supply/orderer-tls-root.pem
         read_only: true
         bind: {create_host_path: false}
+      - type: bind
+        source: ../.runtime/trust/buyer-tls-ca.pem
+        target: /run/supply/peer-tls-root.pem
+        read_only: true
+        bind: {create_host_path: false}
   peer0-carrier:
     <<: *peer
     env_file:
@@ -300,6 +310,11 @@ services:
       - type: bind
         source: ../.runtime/trust/orderer-tls-ca.pem
         target: /run/supply/orderer-tls-root.pem
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ../.runtime/trust/carrier-tls-ca.pem
+        target: /run/supply/peer-tls-root.pem
         read_only: true
         bind: {create_host_path: false}
   couchdb0-seller:

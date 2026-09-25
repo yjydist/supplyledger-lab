@@ -10,7 +10,7 @@ General:
     Certificate: /run/supply/tls/signcerts/cert.pem
     PrivateKey: /run/supply/tls/keystore/__ORDERER_TLS_KEY__
     RootCAs:
-      - /run/supply/tls/tlscacerts/orderer-tls-ca.pem
+      - /run/supply/client-roots/orderer.pem
     ClientAuthRequired: true
     ClientRootCAs:
       - /run/supply/client-roots/orderer.pem

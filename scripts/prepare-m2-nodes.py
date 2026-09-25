@@ -297,7 +297,7 @@ def check_node_fields(output_runtime, keys):
             require(scalars.get(field) == value,
                     f"{name}: wrong node field {'.'.join(field)}")
         require(lists.get(("General", "TLS", "RootCAs"))
-                == ["/run/supply/tls/tlscacerts/orderer-tls-ca.pem"],
+                == ["/run/supply/client-roots/orderer.pem"],
                 f"{name}: wrong Raft outbound TLS root")
         require(lists.get(("General", "TLS", "ClientRootCAs"))
                 == [f"/run/supply/client-roots/{org}.pem"
@@ -338,7 +338,7 @@ def check_node_fields(output_runtime, keys):
             ("peer", "tls", "cert", "file"): tls_cert,
             ("peer", "tls", "key", "file"): tls_key,
             ("peer", "tls", "rootcert", "file"):
-                f"/run/supply/tls/tlscacerts/{org}-tls-ca.pem",
+                "/run/supply/peer-tls-root.pem",
             ("peer", "tls", "clientCert", "file"): tls_cert,
             ("peer", "tls", "clientKey", "file"): tls_key,
             ("deliveryclient", "blockGossipEnabled"): "false",
@@ -360,7 +360,7 @@ def check_node_fields(output_runtime, keys):
                 and ("ledger", "state", "couchDBConfig", "password") not in scalars,
                 f"{name}: CouchDB credentials embedded in YAML")
         require(lists.get(("operations", "tls", "clientRootCAs", "files"))
-                == [f"/run/supply/tls/tlscacerts/{org}-tls-ca.pem"],
+                == ["/run/supply/peer-tls-root.pem"],
                 f"{name}: wrong operations client TLS root")
     print("PASS: six node YAMLs enforce MSP, TLS, CouchDB, gossip, Gateway and volume paths")
 
