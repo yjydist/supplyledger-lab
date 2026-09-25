@@ -37,10 +37,10 @@ RUN set -eu; \
       --output /tmp/supply-releases/ca.tar.gz; \
     printf '%s  %s\n' "$ca_sha" /tmp/supply-releases/ca.tar.gz | sha256sum --check; \
     tar -xzf /tmp/supply-releases/fabric.tar.gz -C /tmp/supply-releases/fabric \
-      bin/peer bin/orderer bin/configtxgen bin/configtxlator bin/osnadmin; \
+      bin/peer bin/orderer bin/configtxgen bin/configtxlator bin/osnadmin bin/discover; \
     tar -xzf /tmp/supply-releases/ca.tar.gz -C /tmp/supply-releases/ca \
       bin/fabric-ca-client; \
-    for binary in peer orderer configtxgen configtxlator osnadmin; do \
+    for binary in peer orderer configtxgen configtxlator osnadmin discover; do \
       install -m 0755 "/tmp/supply-releases/fabric/bin/$binary" /usr/local/bin/; \
     done; \
     install -m 0755 /tmp/supply-releases/ca/bin/fabric-ca-client /usr/local/bin/; \

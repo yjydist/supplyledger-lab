@@ -163,7 +163,7 @@ fi
 
 if docker run --rm --pull=never --platform "$expected_platform" --network none --read-only \
      --entrypoint bash "$tools_image" -euc '
-       for binary in peer orderer configtxgen configtxlator osnadmin fabric-ca-client jq openssl curl tar gzip; do
+       for binary in peer orderer configtxgen configtxlator osnadmin discover fabric-ca-client jq openssl curl tar gzip; do
          command -v "$binary" >/dev/null
        done
        peer version >/dev/null
@@ -172,6 +172,7 @@ if docker run --rm --pull=never --platform "$expected_platform" --network none -
        configtxlator version >/dev/null
        fabric-ca-client version >/dev/null
        osnadmin --help >/dev/null
+       discover --help >/dev/null
      ' >/dev/null 2>&1; then
   pass 'locked Fabric, CA, and diagnostic commands execute in tools image'
 else

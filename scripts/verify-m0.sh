@@ -111,7 +111,7 @@ require_digest images.supplyTools.localPlatformDigest "$tools_platform"
 pass 'self-built local tools image index/platform digests match lock; publication NOT RUN'
 
 {
-  for binary in peer orderer configtxgen configtxlator osnadmin; do
+  for binary in peer orderer configtxgen configtxlator osnadmin discover; do
     printf '%s  /usr/local/bin/%s\n' "$(locked "releases.fabric.binariesSha256.$binary")" "$binary"
   done
   printf '%s  /usr/local/bin/fabric-ca-client\n' "$(locked releases.fabricCA.binariesSha256.fabric-ca-client)"
@@ -122,7 +122,7 @@ docker run --rm --pull=never --platform "$expected_platform" --network none --re
   -e CA_VERSION="$(locked releases.fabricCA.version)" \
   -e CONTAINER_PLATFORM="$expected_platform" \
   --entrypoint bash "$tools_image" -euc '
-    for binary in peer orderer configtxgen configtxlator osnadmin fabric-ca-client bash jq openssl curl tar gzip; do
+    for binary in peer orderer configtxgen configtxlator osnadmin discover fabric-ca-client bash jq openssl curl tar gzip; do
       command -v "$binary" >/dev/null
     done
     for binary in peer orderer configtxgen configtxlator; do
@@ -134,6 +134,7 @@ docker run --rm --pull=never --platform "$expected_platform" --network none --re
     grep -Fq "Version: $CA_VERSION" <<< "$output"
     grep -Fq "OS/Arch: $CONTAINER_PLATFORM" <<< "$output"
     osnadmin --help >/dev/null 2>&1
+    discover --help >/dev/null 2>&1
   ' || die 'tools CLI versions, platform, or required commands differ from lock'
 package_sha=$(docker run --rm --pull=never --platform "$expected_platform" --network none --read-only \
   --entrypoint bash "$tools_image" -euc "dpkg-query -W -f='\${Package}=\${Version}\\n' | LC_ALL=C sort | sha256sum | awk '{print \$1}'") || die 'tools OS package query failed'

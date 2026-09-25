@@ -1,5 +1,5 @@
 schemaVersion: 1
-measuredAtUtc: 2026-09-24T09:23:39Z
+measuredAtUtc: 2026-09-25T17:58:29Z
 specification: SPEC.md §§2.1–2.3
 sourceCommits:
   repositoryBaseline: 9ab5fedc0064650c5033e81d8e2380912def4719
@@ -103,8 +103,8 @@ images:
     localTag: supply-tools:m0-fabric3.1.5-ca1.5.22
     baseImageKey: ubuntuBase
     platform: linux/arm64
-    localIndexDigest: sha256:6b466c4dbd8aee240cbbc4c95860c4bf0b7a0de83b3edc808bc3dc71b895f8fe
-    localPlatformDigest: sha256:518f2c0569e28415082bce18a7d680a2232d811085542f13d51c0ca789e60c23
+    localIndexDigest: sha256:459219f8ab900356b8914d37cc3c6dc573ec471a33a81b5a4fc6809bb2034872
+    localPlatformDigest: sha256:edb72eb8ee100c04acffdeb310482d87ceb2228e5b3afc23b362d20c855d1fd3
     publishedManifestDigest: NOT RUN
     fabricVersion: v3.1.5
     fabricCAVersion: v1.5.22
