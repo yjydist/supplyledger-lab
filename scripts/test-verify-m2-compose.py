@@ -63,6 +63,10 @@ def main():
              '    volumes: ["/var/run/docker.sock:/var/run/docker.sock"]\n  orderer0:')),
         ("Peer TLS-off environment override", "environment could override TLS/MSP",
          peer_tls_off),
+        ("Peer client-mTLS-off environment override", "environment could override TLS/MSP",
+         lambda text: replace_once(text, "  peer0-seller:\n    <<: *peer\n",
+                                   '  peer0-seller:\n    <<: *peer\n'
+                                   '    environment: {CORE_PEER_TLS_CLIENTAUTHREQUIRED: "false"}\n')),
         ("Peer Docker VM endpoint environment override",
          "environment could override TLS/MSP",
          lambda text: replace_once(text, "  peer0-seller:\n    <<: *peer\n",
@@ -100,6 +104,26 @@ def main():
                                    "        target: /run/supply/peer-tls-root.pem",
                                    "source: ../.runtime/trust/buyer-tls-ca.pem\n"
                                    "        target: /run/supply/peer-tls-root.pem")),
+        ("missing cross-org client root", "unexpected mount count",
+         lambda text: replace_once(text,
+                                   "      - type: bind\n"
+                                   "        source: ../.runtime/trust/buyer-tls-ca.pem\n"
+                                   "        target: /run/supply/client-roots/buyer.pem\n"
+                                   "        read_only: true\n"
+                                   "        bind: {create_host_path: false}\n",
+                                   "")),
+        ("wrong cross-org client root", "unexpected source",
+         lambda text: replace_once(text,
+                                   "source: ../.runtime/trust/buyer-tls-ca.pem\n"
+                                   "        target: /run/supply/client-roots/buyer.pem",
+                                   "source: ../.runtime/trust/seller-tls-ca.pem\n"
+                                   "        target: /run/supply/client-roots/buyer.pem")),
+        ("writable cross-org client root", "writable bind",
+         lambda text: replace_once(text,
+                                   "target: /run/supply/client-roots/buyer.pem\n"
+                                   "        read_only: true",
+                                   "target: /run/supply/client-roots/buyer.pem\n"
+                                   "        read_only: false")),
     )
     with tempfile.TemporaryDirectory(prefix="supply-m2-compose-test-") as dirname:
         directory = Path(dirname)

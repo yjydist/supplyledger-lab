@@ -122,6 +122,44 @@ def main():
                                b"deliveryclient:\n  blockGossipEnabled: false\nledger:\n",
                                fields, output_runtime, keys,
                                "root-level deliveryclient is ignored")
+        tls_flag = (b"  deliveryclient:\n    blockGossipEnabled: false\n"
+                    b"  tls:\n    enabled: true\n    clientAuthRequired: true\n")
+        for replacement in (
+            tls_flag.replace(b"    clientAuthRequired: true\n",
+                             b"    clientAuthRequired: false\n"),
+            tls_flag.replace(b"    clientAuthRequired: true\n", b""),
+        ):
+            expect_field_rejection(peer_rendered, tls_flag, replacement,
+                                   fields, output_runtime, keys,
+                                   "wrong node field peer.tls.clientAuthRequired")
+        tls_roots = (b"    clientRootCAs:\n      files:\n"
+                     b"        - /run/supply/peer-tls-root.pem\n"
+                     b"        - /run/supply/client-roots/buyer.pem\n"
+                     b"        - /run/supply/client-roots/carrier.pem\n")
+        for replacement in (
+            b"", tls_roots.replace(b"        - /run/supply/client-roots/buyer.pem\n", b""),
+            tls_roots + b"        - /run/supply/client-roots/orderer.pem\n",
+            tls_roots.replace(b"/run/supply/client-roots/buyer.pem",
+                              b"/run/supply/client-roots/seller.pem"),
+        ):
+            expect_field_rejection(peer_rendered, tls_roots, replacement,
+                                   fields, output_runtime, keys,
+                                   "wrong peer.tls.clientRootCAs.files")
+        rendered_client_key = (
+            f"    clientKey:\n      file: /run/supply/tls/keystore/"
+            f"{keys[('peer0-seller', 'tls')]}\n").encode()
+        for original_fragment, replacement in (
+            (b"    clientCert:\n      file: /run/supply/tls/signcerts/cert.pem\n", b""),
+            (b"    clientCert:\n      file: /run/supply/tls/signcerts/cert.pem\n",
+             b"    clientCert:\n      file: /run/supply/other-org/signcerts/cert.pem\n"),
+            (rendered_client_key, b""),
+            (rendered_client_key, rendered_client_key.replace(
+                b"/run/supply/tls/keystore/", b"/run/supply/other-org/keystore/")),
+        ):
+            expect_field_rejection(peer_rendered, original_fragment, replacement,
+                                   fields, output_runtime, keys,
+                                   "wrong node field peer.tls.client")
+        print("PASS: rendered Peer mTLS flag, exact business roots and paired client paths enforced")
         expect_field_rejection(peer_rendered, b"chaincode:\n",
                                b"vm:\n  endpoint: unix:///var/run/docker.sock\nchaincode:\n",
                                fields, output_runtime, keys,
@@ -212,6 +250,21 @@ def main():
             (b"chaincode:\n",
              b"vm:\n  endpoint: unix:///var/run/docker.sock\nchaincode:\n",
              "source Docker VM endpoint is forbidden"),
+            (tls_flag, tls_flag.replace(b"    clientAuthRequired: true\n",
+                                        b"    clientAuthRequired: false\n"),
+             "source peer.tls.clientAuthRequired must be true"),
+            (tls_flag, tls_flag.replace(b"    clientAuthRequired: true\n", b""),
+             "source peer.tls.clientAuthRequired must be true"),
+            (tls_roots, b"", "wrong source peer.tls.clientRootCAs.files"),
+            (tls_roots, tls_roots.replace(b"/run/supply/client-roots/buyer.pem",
+                                          b"/run/supply/client-roots/seller.pem"),
+             "wrong source peer.tls.clientRootCAs.files"),
+            (tls_roots, tls_roots + b"        - /run/supply/client-roots/orderer.pem\n",
+             "wrong source peer.tls.clientRootCAs.files"),
+            (b"    clientCert:\n      file: /run/supply/tls/signcerts/cert.pem\n",
+             b"", "source outbound Peer TLS client pair must be complete"),
+            (b"    clientKey:\n      file: /run/supply/tls/keystore/__PEER_TLS_KEY__\n",
+             b"", "source outbound Peer TLS client pair must be complete"),
         ):
             assert original_peer_source.count(original_fragment) == 1
             peer_source.write_bytes(original_peer_source.replace(
@@ -226,7 +279,7 @@ def main():
                     raise AssertionError(f"unsafe source Peer setting accepted: {expected_error}")
             finally:
                 render_globals["ROOT"] = original_root
-        print("PASS: source M2 builder, nested delivery and absent Docker VM endpoint enforced")
+        print("PASS: source M2 builder, delivery, Peer mTLS roots/client pair and absent VM enforced")
         for original_fragment, replacement in (
             (system_block, b""),
             (b"    _lifecycle: enable\n", b""),
@@ -297,12 +350,15 @@ def main():
         print("PASS: mismatched Peer/CouchDB secret rejected without disclosure")
         for override in (b"CORE_VM_ENDPOINT=unix:///var/run/docker.sock\n",
                          b"CORE_CHAINCODE_EXTERNALBUILDERS=[]\n",
-                         b"CORE_CHAINCODE_SYSTEM_CSCC=disable\n"):
+                         b"CORE_CHAINCODE_SYSTEM_CSCC=disable\n",
+                         b"CORE_PEER_TLS_CLIENTAUTHREQUIRED=false\n",
+                         b"CORE_PEER_TLS_CLIENTCERT_FILE=/run/other/cert.pem\n",
+                         b"CORE_PEER_TLS_CLIENTKEY_FILE=/run/other/key.pem\n"):
             peer.write_bytes(original + override)
             rejected = run("verify", m1_runtime, output_runtime, secrets_dir)
             assert rejected.returncode == 1 and "unexpected private env key" in rejected.stderr
         peer.write_bytes(original)
-        print("PASS: private Peer env cannot override VM, builder or system chaincodes")
+        print("PASS: private Peer env cannot override VM, builder, system chaincodes or TLS pair")
 
         rendered = output_runtime / "network-config/orderer0.yaml"
         original = rendered.read_bytes()

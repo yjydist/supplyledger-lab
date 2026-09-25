@@ -41,6 +41,11 @@ PEER_SYSTEM = {
 }
 
 
+def peer_client_roots(org):
+    return ["/run/supply/peer-tls-root.pem" if member == org
+            else f"/run/supply/client-roots/{member}.pem" for member in ORGS]
+
+
 def require(condition, message):
     if not condition:
         raise ValueError(message)
@@ -221,12 +226,23 @@ def rendered_config(name, keys):
                 f"{name}: source MaxRequestBodySize must be 1 MB")
     else:
         source_scalars, source_lists = yaml_fields(template)
+        org = name.removeprefix("peer0-")
         for field, value in PEER_BCCSP.items():
             require(source_scalars.get(field) == value,
                     f"{name}: wrong source node field {'.'.join(field)}")
         require(source_scalars.get(("peer", "deliveryclient", "blockGossipEnabled"))
                 == "false" and ("deliveryclient", "blockGossipEnabled") not in source_scalars,
                 f"{name}: source peer.deliveryclient.blockGossipEnabled must be false")
+        require(source_scalars.get(("peer", "tls", "clientAuthRequired")) == "true",
+                f"{name}: source peer.tls.clientAuthRequired must be true for delivery and inbound mTLS")
+        require(source_lists.get(("peer", "tls", "clientRootCAs", "files"))
+                == peer_client_roots(org),
+                f"{name}: wrong source peer.tls.clientRootCAs.files")
+        require(source_scalars.get(("peer", "tls", "clientCert", "file"))
+                == "/run/supply/tls/signcerts/cert.pem"
+                and source_scalars.get(("peer", "tls", "clientKey", "file"))
+                == "/run/supply/tls/keystore/__PEER_TLS_KEY__",
+                f"{name}: source outbound Peer TLS client pair must be complete")
         require(source_lists.get(("chaincode", "externalBuilders")) == [PEER_BUILDER],
                 f"{name}: source must select only the M2 deny-all external builder")
         check_peer_system(source_scalars, name, source=True)
@@ -379,7 +395,7 @@ def check_node_fields(output_runtime, keys):
             ("peer", "gossip", "useLeaderElection"): "false",
             ("peer", "gossip", "state", "enabled"): "false",
             ("peer", "tls", "enabled"): "true",
-            ("peer", "tls", "clientAuthRequired"): "false",
+            ("peer", "tls", "clientAuthRequired"): "true",
             ("peer", "tls", "cert", "file"): tls_cert,
             ("peer", "tls", "key", "file"): tls_key,
             ("peer", "tls", "rootcert", "file"):
@@ -402,6 +418,9 @@ def check_node_fields(output_runtime, keys):
         for field, value in expected.items():
             require(scalars.get(field) == value,
                     f"{name}: wrong node field {'.'.join(field)}")
+        require(lists.get(("peer", "tls", "clientRootCAs", "files"))
+                == peer_client_roots(org),
+                f"{name}: wrong peer.tls.clientRootCAs.files")
         require(("deliveryclient", "blockGossipEnabled") not in scalars,
                 f"{name}: root-level deliveryclient is ignored by Fabric")
         require(lists.get(("chaincode", "externalBuilders")) == [PEER_BUILDER],

@@ -29,7 +29,12 @@ peer:
     blockGossipEnabled: false
   tls:
     enabled: true
-    clientAuthRequired: false
+    clientAuthRequired: true
+    clientRootCAs:
+      files:
+        - /run/supply/client-roots/seller.pem
+        - /run/supply/client-roots/buyer.pem
+        - /run/supply/peer-tls-root.pem
     cert:
       file: /run/supply/tls/signcerts/cert.pem
     key:
