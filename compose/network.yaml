@@ -1,0 +1,303 @@
+name: supplyledger
+
+# M2 node topology. Use with bootstrap.yaml and ca.yaml so the existing
+# organization networks and CA volumes retain their original identity.
+# Node configuration files are supplied by M2 #16; missing binds fail closed.
+x-orderer: &orderer
+  image: docker.io/hyperledger/fabric-orderer:3.1.5@sha256:dcb4c042237993a6f537b2f54e701e749f8e108f25c0cbe0c6742c205fccc3d5
+  pull_policy: never
+  read_only: true
+  tmpfs: [/tmp]
+  environment:
+    FABRIC_CFG_PATH: /etc/hyperledger/fabric
+  stop_grace_period: 30s
+
+x-peer: &peer
+  # M2 runs without chaincode. M3 #22 replaces this with the repository-built
+  # external-builder Peer image in place, preserving the named ledger volumes.
+  image: docker.io/hyperledger/fabric-peer:3.1.5@sha256:e07c735b6f2d131315f3ae6e582c5aa602143d9d14805bb98be8ebc9d6baa82c
+  pull_policy: never
+  read_only: true
+  tmpfs: [/tmp]
+  environment:
+    FABRIC_CFG_PATH: /etc/hyperledger/fabric
+  stop_grace_period: 30s
+
+x-couchdb: &couchdb
+  image: docker.io/library/couchdb:3.4.2@sha256:2817ad50b5c5cf7461f5963670466197426605a790a19a6208068c509a2d8a59
+  pull_policy: never
+  # Each private env file must supply COUCHDB_USER and COUCHDB_PASSWORD.
+  # The pinned image refuses to run without an admin; M2 #16 creates the files.
+  stop_grace_period: 30s
+
+services:
+  orderer0:
+    <<: *orderer
+    networks:
+      fabric:
+        aliases: [orderer0.orderer.supply.test]
+      orderer:
+        aliases: [orderer0.orderer.supply.test]
+    volumes:
+      - type: volume
+        source: orderer0-ledger
+        target: /var/hyperledger/production
+      - type: bind
+        source: ../network/config/orderer0.yaml
+        target: /etc/hyperledger/fabric/orderer.yaml
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ../.runtime/identities/orderer/orderer0/msp
+        target: /run/supply/msp
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ../.runtime/identities/orderer/orderer0-tls/msp
+        target: /run/supply/tls
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ../.runtime/identities/orderer/orderer0-admin-server-tls/msp
+        target: /run/supply/admin-server-tls
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ../.runtime/trust/orderer-admin-tls-ca.pem
+        target: /run/supply/admin-client-root.pem
+        read_only: true
+        bind: {create_host_path: false}
+  orderer1:
+    <<: *orderer
+    networks:
+      fabric:
+        aliases: [orderer1.orderer.supply.test]
+      orderer:
+        aliases: [orderer1.orderer.supply.test]
+    volumes:
+      - type: volume
+        source: orderer1-ledger
+        target: /var/hyperledger/production
+      - type: bind
+        source: ../network/config/orderer1.yaml
+        target: /etc/hyperledger/fabric/orderer.yaml
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ../.runtime/identities/orderer/orderer1/msp
+        target: /run/supply/msp
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ../.runtime/identities/orderer/orderer1-tls/msp
+        target: /run/supply/tls
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ../.runtime/identities/orderer/orderer1-admin-server-tls/msp
+        target: /run/supply/admin-server-tls
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ../.runtime/trust/orderer-admin-tls-ca.pem
+        target: /run/supply/admin-client-root.pem
+        read_only: true
+        bind: {create_host_path: false}
+  orderer2:
+    <<: *orderer
+    networks:
+      fabric:
+        aliases: [orderer2.orderer.supply.test]
+      orderer:
+        aliases: [orderer2.orderer.supply.test]
+    volumes:
+      - type: volume
+        source: orderer2-ledger
+        target: /var/hyperledger/production
+      - type: bind
+        source: ../network/config/orderer2.yaml
+        target: /etc/hyperledger/fabric/orderer.yaml
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ../.runtime/identities/orderer/orderer2/msp
+        target: /run/supply/msp
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ../.runtime/identities/orderer/orderer2-tls/msp
+        target: /run/supply/tls
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ../.runtime/identities/orderer/orderer2-admin-server-tls/msp
+        target: /run/supply/admin-server-tls
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ../.runtime/trust/orderer-admin-tls-ca.pem
+        target: /run/supply/admin-client-root.pem
+        read_only: true
+        bind: {create_host_path: false}
+  peer0-seller:
+    <<: *peer
+    networks:
+      fabric:
+        aliases: [peer0.seller.supply.test]
+      seller:
+        aliases: [peer0.seller.supply.test]
+    volumes:
+      - type: volume
+        source: peer0-seller-ledger
+        target: /var/hyperledger/production
+      - type: bind
+        source: ../network/config/peer0-seller.yaml
+        target: /etc/hyperledger/fabric/core.yaml
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ../.runtime/identities/seller/seller-peer0/msp
+        target: /run/supply/msp
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ../.runtime/identities/seller/seller-peer0-tls/msp
+        target: /run/supply/tls
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ../.runtime/trust/orderer-tls-ca.pem
+        target: /run/supply/orderer-tls-root.pem
+        read_only: true
+        bind: {create_host_path: false}
+  peer0-buyer:
+    <<: *peer
+    networks:
+      fabric:
+        aliases: [peer0.buyer.supply.test]
+      buyer:
+        aliases: [peer0.buyer.supply.test]
+    volumes:
+      - type: volume
+        source: peer0-buyer-ledger
+        target: /var/hyperledger/production
+      - type: bind
+        source: ../network/config/peer0-buyer.yaml
+        target: /etc/hyperledger/fabric/core.yaml
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ../.runtime/identities/buyer/buyer-peer0/msp
+        target: /run/supply/msp
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ../.runtime/identities/buyer/buyer-peer0-tls/msp
+        target: /run/supply/tls
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ../.runtime/trust/orderer-tls-ca.pem
+        target: /run/supply/orderer-tls-root.pem
+        read_only: true
+        bind: {create_host_path: false}
+  peer0-carrier:
+    <<: *peer
+    networks:
+      fabric:
+        aliases: [peer0.carrier.supply.test]
+      carrier:
+        aliases: [peer0.carrier.supply.test]
+    volumes:
+      - type: volume
+        source: peer0-carrier-ledger
+        target: /var/hyperledger/production
+      - type: bind
+        source: ../network/config/peer0-carrier.yaml
+        target: /etc/hyperledger/fabric/core.yaml
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ../.runtime/identities/carrier/carrier-peer0/msp
+        target: /run/supply/msp
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ../.runtime/identities/carrier/carrier-peer0-tls/msp
+        target: /run/supply/tls
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ../.runtime/trust/orderer-tls-ca.pem
+        target: /run/supply/orderer-tls-root.pem
+        read_only: true
+        bind: {create_host_path: false}
+  couchdb0-seller:
+    <<: *couchdb
+    env_file:
+      - path: ../.secrets/couchdb/seller.env
+        required: false
+    networks:
+      seller:
+        aliases: [couchdb0.seller.supply.test]
+    volumes:
+      - type: volume
+        source: couchdb0-seller-data
+        target: /opt/couchdb/data
+  couchdb0-buyer:
+    <<: *couchdb
+    env_file:
+      - path: ../.secrets/couchdb/buyer.env
+        required: false
+    networks:
+      buyer:
+        aliases: [couchdb0.buyer.supply.test]
+    volumes:
+      - type: volume
+        source: couchdb0-buyer-data
+        target: /opt/couchdb/data
+  couchdb0-carrier:
+    <<: *couchdb
+    env_file:
+      - path: ../.secrets/couchdb/carrier.env
+        required: false
+    networks:
+      carrier:
+        aliases: [couchdb0.carrier.supply.test]
+    volumes:
+      - type: volume
+        source: couchdb0-carrier-data
+        target: /opt/couchdb/data
+
+networks:
+  fabric:
+    name: supply-fabric
+
+volumes:
+  orderer0-ledger:
+    name: supplyledger_orderer0_ledger
+    labels: {supplyledger.reset: allow}
+  orderer1-ledger:
+    name: supplyledger_orderer1_ledger
+    labels: {supplyledger.reset: allow}
+  orderer2-ledger:
+    name: supplyledger_orderer2_ledger
+    labels: {supplyledger.reset: allow}
+  peer0-seller-ledger:
+    name: supplyledger_peer0_seller_ledger
+    labels: {supplyledger.reset: allow}
+  peer0-buyer-ledger:
+    name: supplyledger_peer0_buyer_ledger
+    labels: {supplyledger.reset: allow}
+  peer0-carrier-ledger:
+    name: supplyledger_peer0_carrier_ledger
+    labels: {supplyledger.reset: allow}
+  couchdb0-seller-data:
+    name: supplyledger_couchdb0_seller_data
+    labels: {supplyledger.reset: allow}
+  couchdb0-buyer-data:
+    name: supplyledger_couchdb0_buyer_data
+    labels: {supplyledger.reset: allow}
+  couchdb0-carrier-data:
+    name: supplyledger_couchdb0_carrier_data
+    labels: {supplyledger.reset: allow}

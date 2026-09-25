@@ -3,17 +3,20 @@ SHELL := /bin/bash
 
 BOOTSTRAP_COMPOSE := compose/bootstrap.yaml
 CA_COMPOSE := compose/ca.yaml
+NETWORK_COMPOSE := compose/network.yaml
 TOOLS_IMAGE := supply-tools:m0-fabric3.1.5-ca1.5.22
 M1_RUNTIME_DIR ?= .runtime
 BOOTSTRAP := docker compose -p supplyledger -f $(BOOTSTRAP_COMPOSE) --profile bootstrap
-ALL_SERVICES := docker compose -p supplyledger -f $(BOOTSTRAP_COMPOSE) -f $(CA_COMPOSE) --profile bootstrap --profile ca
+CA_SERVICES := docker compose -p supplyledger -f $(BOOTSTRAP_COMPOSE) -f $(CA_COMPOSE) --profile bootstrap --profile ca
+ALL_SERVICES := docker compose -p supplyledger -f $(BOOTSTRAP_COMPOSE) -f $(CA_COMPOSE) -f $(NETWORK_COMPOSE) --profile bootstrap --profile ca
 
-.PHONY: help tools-build doctor compose-config ca-config verify-m0 verify-m1 verify-m1-tls pki network-up channel-create chaincode-deploy app-up verify test-e2e test-fault backup restore stop down reset
+.PHONY: help tools-build doctor compose-config ca-config network-config test-m2-compose verify-m0 verify-m1 verify-m1-tls pki network-up channel-create chaincode-deploy app-up verify test-e2e test-fault backup restore stop down reset
 
 help:
 	@printf '%s\n' \
 	  'M0: tools-build, doctor, compose-config, verify-m0' \
-	  'M1: ca-config, verify-m1, verify-m1-tls; stop, down, reset cover all declared CA services and volumes' \
+	  'M1: ca-config, verify-m1, verify-m1-tls; stop, down, reset retain declared data volumes' \
+	  'M2: network-config validates the Peer/Orderer/CouchDB topology; test-m2-compose exercises policy rejection' \
 	  'Later stages: pki (M1), network-up/channel-create (M2), chaincode-deploy (M3),' \
 	  'app-up (M6), verify/test-e2e (M3+), test-fault/backup/restore (M9).' \
 	  'Later-stage targets exit with NOT RUN until their native first-run steps are recorded.'
@@ -29,8 +32,15 @@ compose-config:
 	@printf '%s\n' 'PASS: M0 bootstrap Compose config; formal network Compose NOT RUN'
 
 ca-config:
-	$(ALL_SERVICES) config --quiet
-	@printf '%s\n' 'PASS: M1 CA Compose config; formal network Compose NOT RUN'
+	$(CA_SERVICES) config --quiet
+	@printf '%s\n' 'PASS: M1 CA Compose config; use network-config for the M2 overlay'
+
+network-config:
+	$(ALL_SERVICES) config --no-env-resolution --quiet
+	python3 scripts/verify-m2-compose.py
+
+test-m2-compose:
+	python3 scripts/test-verify-m2-compose.py
 
 verify-m0:
 	bash scripts/verify-m0.sh
