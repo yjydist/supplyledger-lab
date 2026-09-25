@@ -97,4 +97,57 @@ docker run --rm --pull=never --platform linux/arm64 --network none --read-only -
   done'
 ~~~
 
-Actual output was three `PASS` lines, one per program, and Docker exit `0`. The tracked `bin/{detect,build,release}` files have Git mode `100755` (filesystem mode `0755`) and SHA-256 values `581ef8cf5c519b603a5b116aa4d7e48aff620249704d77b8458b7cb0074ae33f`, `d322c173f8f7708acf3691dd70aae39a9251662d2064aecae13e2066209fbc14` and `76377bfa9730dab505a56e7f525e9cca0fcb1edb90131a431a3e1649c5a6f587`, respectively. This offline check is separate from Seller's prior **FAIL** at process exit `2`. The guarded ignored-config migration, Seller retry, Buyer/Carrier starts, Peer TLS/operations health, all Peer joins, full NET-06 and live `T-NET-02` remain **NOT RUN**.
+Actual output was three `PASS` lines, one per program, and Docker exit `0`. The tracked `bin/{detect,build,release}` files have Git mode `100755` (filesystem mode `0755`) and SHA-256 values `581ef8cf5c519b603a5b116aa4d7e48aff620249704d77b8458b7cb0074ae33f`, `d322c173f8f7708acf3691dd70aae39a9251662d2064aecae13e2066209fbc14` and `76377bfa9730dab505a56e7f525e9cca0fcb1edb90131a431a3e1649c5a6f587`, respectively. This offline check is separate from Seller's prior **FAIL** at process exit `2`. The guarded ignored-config migration, Seller retry, Buyer/Carrier starts, Peer TLS/operations health, all Peer joins, full NET-06 and live `T-NET-02` were **NOT RUN at this offline checkpoint**; the subsequent Seller-only results follow.
+
+## Guarded Peer migration and Seller-only live retry
+
+- Test: `M2-I16-NET06-04` (SPEC.md §§5.4 NET-06, 19.1; §20.1 T-NET-02). **PASS** for the guarded config migration and Seller process/TLS/operations checkpoint. Full NET-06, all-Peer `T-NET-02`, Peer channel joins and channel readiness are **NOT RUN**.
+- Source commit at execution: clean local and GitHub main `28c6c8ac06ee0178ee9a957b4179160890dd37a6`. `versions.lock.yaml` SHA-256 `422fba14294aaf9f0c40862fcd112ed3d2ed664cd5294c7bfe0aa14477fa234b`; host `darwin/arm64`, Docker `linux/arm64`; Compose project/overlays/profiles and pinned Peer image as above. Original #17 block SHA-256 `b0a5ec0894d45ca7b6577b8f576d176347ad90cb4f80ac18de2dea3cc5ebd08a` and native decoded JSON SHA-256 `2e3c9994819ae2f5ec5c6a5741f6bf558d0c364380ffee3cac10930f8f4b4e09`.
+- Initial state: Seller's second failed container `bfb12bc843542e7a17a74b3045f458bd7883860f2edf9b4a555ea2b2d752431d` was `exited:2`; its first `exited:1` predecessor and both failure logs remained retained. Buyer/Carrier Peer containers were absent. The three joined Orderers and three CouchDBs were running; Seller ledger `supplyledger_peer0_seller_ledger` had creation timestamp `2026-09-25T15:10:23Z`.
+
+The first, second and third `sh` blocks in the [reviewed second Seller recovery procedure](../../docs/m2-node-config-native.md#one-time-recovery-from-the-second-seller-peer-startup-failure) were executed separately in the retained main checkout. A Python wrapper extracted each literal block and passed it to `/bin/sh -eu`, redirecting stdout/stderr to a fresh ignored mode-0600 `.runtime/m2-node-logs/peer-deny-{stage,exact-delta,migrate}.log` and recording each actual exit in the paired `.exit` file. Each exited `0`; the commands inside those three linked blocks are the exact migration commands. No container was restarted during staging or replacement.
+
+| Native operation and expected result | Actual result | Judgment |
+| --- | --- | --- |
+| Pre-stage exact six-file credential/mode gate, Seller `exited:2` and Buyer/Carrier absent gate, `make verify-m1`, source/identity/credential/block/Orderer and service-ID snapshots, `make network-config`, `make prepare-m2-nodes M2_OUTPUT_RUNTIME_DIR=.runtime/m2-peer-deny-stage`, staged node/block verifiers | Stage block exit `0`; no credential regeneration; six new ignored YAMLs were verified before replacing any bind source. | **PASS**, stage only |
+| Run the documented byte comparison: Orderer YAMLs unchanged; each Peer YAML only moves `blockGossipEnabled:false` under `peer` and selects the sole deny-all builder | Exact-delta block exit `0`; three Orderers byte-identical, three Peers matched those exact substitutions. | **PASS**, pre-replacement comparison |
+| Archive/replace **only** the three Peer YAMLs, run main-runtime node/block/Compose/M1 verifiers, compare retained inputs, Seller volume and six running Orderer/CouchDB IDs | Migration block exit `0`; all 273 M1 identity files, six original env files, block plus decoded JSON, and three Orderer YAMLs matched pre-migration hashes. Seller named ledger name/creation and six service IDs stayed identical. | **PASS**, ignored config migration |
+| `docker compose -p supplyledger -f compose/bootstrap.yaml -f compose/ca.yaml -f compose/network.yaml --profile bootstrap --profile ca up -d --no-deps --force-recreate peer0-seller` | Compose exit `0`; new Seller ID `7adb02032008cbbfaa1aed2d4cd0538b1c2254afa960a5b55af2387f9446fe73`, process `running`, exit code `0`; same ledger name/creation, pinned image, exactly `supply-fabric` and `supply-seller` networks, own read-only MSP/TLS/config/public-root mounts, sole read-only tracked builder bind, no Docker socket or published port. | **PASS**, Seller process only |
+
+The three Orderer IDs remained `eaecd7616246f2458c7ac929f205110205df0ef83dbdaa86cbaab878620`, `2c85e897e37fa4056c4847f02c4ff1d9bbf4671aee8e256c18db291883b4dfe6` and `f260c67f163c31fb8c5a16425459166e09bc6a6970345f74238d7c4e8425f19c`; the three CouchDB IDs remained `7583fbe9b3b44976dd255c832ae2dac392e2f451fd8ef7e6a057f50233fd0638`, `66c109bae235ffae1d503d74998784e4cebd7bb07c2a48b51528eef68d85d7a6` and `c03cedec53fe965231e02089f8cfa0223b19f008f7873dc5f6796a7fafd6f459`. All six were still running at the post-retry read-only check. The 273-file M1, six-file env, two-file block/JSON and three-file Orderer config manifests still matched **after** Seller's retry; no values or private-key hashes appear here.
+
+The first read-only Docker inspection script exited `1` solely because it compared Docker Desktop's bind source `/host_mnt/Users/.../builders/m2-chaincode-disabled` directly to the host's `/Users/...` path. It did not change a container. The repeated inspection normalized the `/host_mnt` prefix and passed the exact source, read-only flag, own MSP/TLS/config mounts, named ledger, image, networks and absent socket/ports. The new Seller log's effective configuration dump contains `blockgossipenabled: false` and the sole `m2-chaincode-disabled` builder; neither the earlier BCCSP error, VM/external-builder panic nor the `blockGossipEnabled` default-to-true warning appears. The log remains ignored and mode 0600 because the effective dump may include private settings.
+
+Three separate short-lived native tool containers then probed Seller on only `supply-seller`. The exact sanitized commands below correspond to ignored mode-0600 `peer0-seller-peer-deny-{grpc-tls,operations-health,operations-no-client}.{log,exit}` files. `$PWD` was the retained main checkout; `$(id -u):$(id -g)` resolved to `501:20`. The client key was selected within the container from the Seller Peer TLS keystore and never printed or copied.
+
+~~~sh
+docker run --rm --pull=never --platform linux/arm64 --network supply-seller \
+  --read-only --tmpfs /tmp --user "$(id -u):$(id -g)" \
+  --mount "type=bind,src=$PWD/.runtime/trust/seller-tls-ca.pem,dst=/run/trust/seller-tls-ca.pem,readonly" \
+  --entrypoint sh supply-tools:m0-fabric3.1.5-ca1.5.22 -ceu \
+  'openssl s_client -connect peer0.seller.supply.test:7051 \
+    -servername peer0.seller.supply.test -verify_hostname peer0.seller.supply.test \
+    -verify_return_error -CAfile /run/trust/seller-tls-ca.pem -brief < /dev/null'
+
+docker run --rm --pull=never --platform linux/arm64 --network supply-seller \
+  --read-only --tmpfs /tmp --user "$(id -u):$(id -g)" \
+  --mount "type=bind,src=$PWD/.runtime/trust/seller-tls-ca.pem,dst=/run/trust/seller-tls-ca.pem,readonly" \
+  --mount "type=bind,src=$PWD/.runtime/identities/seller/seller-peer0-tls/msp,dst=/run/tls,readonly" \
+  --entrypoint sh supply-tools:m0-fabric3.1.5-ca1.5.22 -ceu \
+  'set -- /run/tls/keystore/*_sk; test "$#" -eq 1 && test -f "$1"; \
+   curl --silent --show-error --fail --max-time 10 \
+     --cacert /run/trust/seller-tls-ca.pem --cert /run/tls/signcerts/cert.pem --key "$1" \
+     --write-out "\nhttp_code=%{http_code}\n" \
+     https://peer0.seller.supply.test:9444/healthz'
+
+docker run --rm --pull=never --platform linux/arm64 --network supply-seller \
+  --read-only --tmpfs /tmp --user "$(id -u):$(id -g)" \
+  --mount "type=bind,src=$PWD/.runtime/trust/seller-tls-ca.pem,dst=/run/trust/seller-tls-ca.pem,readonly" \
+  --entrypoint sh supply-tools:m0-fabric3.1.5-ca1.5.22 -ceu \
+  'curl --verbose --fail --max-time 10 --cacert /run/trust/seller-tls-ca.pem \
+    --output /tmp/no-client-response https://peer0.seller.supply.test:9444/healthz'
+~~~
+
+The gRPC TLS probe exited `0`, negotiated TLS 1.3 and printed `Verification: OK` for the Seller Peer DNS name and root. The own-cert operations mTLS probe exited `0`, returned HTTP `200` and `{"status":"OK",...}`. In Fabric v3.1.5, [the operations health endpoint includes the configured CouchDB check](https://github.com/hyperledger/fabric/blob/v3.1.5/docs/source/operations_service.rst#L340-L366); this establishes Seller's health check at this instant, not its local channel ledger. The no-client operations probe exited `56`: its verbose log first says `SSL certificate verify ok`, then records the TLS 1.3 `certificate required` alert. No application-level HTTP status was accepted without a client certificate.
+
+Buyer and Carrier Peers were not started. No `peer channel join`, channel-list, endorsement, chaincode lifecycle or transaction command ran in this checkpoint. Full NET-06 and `T-NET-02` remain **NOT RUN** until all three Peers and the full live inspection are complete; Peer-local channel height/hash, canonical `genesisHash`, txId and validation code are **NOT RUN** or nonexistent for this startup-only work. The original two Seller failure logs and named ledger are retained.
