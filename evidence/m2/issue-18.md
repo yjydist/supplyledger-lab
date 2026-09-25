@@ -1,8 +1,8 @@
 # M2 #18 — native channel participation and Peer join
 
-Issue [#18](https://github.com/yjydist/supplyledger-lab/issues/18) remains **OPEN**. The first checkpoint records the three Orderer admin mTLS matrices and the first Orderer0 join failure. After the independently reviewed #16 request-size repair, all three Orderers joined the same retained block individually and became active consenters. **`T-NET-04` PASS** at its specified Orderer join/admin mTLS scope; Peer/CouchDB startup, Peer joins, anchors and three-organization equal-height block-hash comparison remain **NOT RUN**.
+Issue [#18](https://github.com/yjydist/supplyledger-lab/issues/18) remains **OPEN**. The first checkpoint records the three Orderer admin mTLS matrices and the first Orderer0 join failure. After the independently reviewed #16 request-size repair, all three Orderers joined the same retained block individually and became active consenters. **`T-NET-04` PASS** at its specified Orderer join/admin mTLS scope. Later, Seller alone joined its local channel ledger at height 1, but its delivery connection to the Orderers failed at TLS client authentication. Buyer/Carrier joins, anchors and three-organization equal-height block-hash comparison remain **NOT RUN**.
 
-- Tests: `M2-I18-ADMIN-01` (live three-node admin mTLS matrix) **PASS**; `M2-I18-NET05-01` (Orderer0 first native join) **FAIL** at admin request parsing; `M2-I18-NET05-02` (Orderer0 retry and status) **PASS**; `M2-I18-NET05-03` (Orderer1/2 individual joins and block-0 agreement) **PASS**; `T-NET-04` **PASS** for the exact §20.1 Orderer/admin scope. See `SPEC.md` §§5.4, 19.1, 20.1 and the dedicated-client requirement transferred from #12.
+- Tests: `M2-I18-ADMIN-01` (live three-node admin mTLS matrix) **PASS**; `M2-I18-NET05-01` (Orderer0 first native join) **FAIL** at admin request parsing; `M2-I18-NET05-02` (Orderer0 retry and status) **PASS**; `M2-I18-NET05-03` (Orderer1/2 individual joins and block-0 agreement) **PASS**; `M2-I18-NET06-02` (Seller local Peer join) **PASS**; `M2-I18-NET06-03` (Seller live block delivery) **FAIL** at TLS client authentication. `T-NET-04` **PASS** for the exact §20.1 Orderer/admin scope; full NET-06 remains incomplete. See `SPEC.md` §§5.4, 19.1, 20.1 and the dedicated-client requirement transferred from #12.
 - Source commit at attempt: `4376ed4c0c6ae176f3240037c0e3a927c930d0c9`; this report's introducing commit must be resolved after review. `versions.lock.yaml` SHA-256 `422fba14294aaf9f0c40862fcd112ed3d2ed664cd5294c7bfe0aa14477fa234b`.
 - Host `darwin/arm64`; Docker `linux/arm64`; pinned `supply-tools:m0-fabric3.1.5-ca1.5.22` local descriptor `sha256:6b466c4dbd8aee240cbbc4c95860c4bf0b7a0de83b3edc808bc3dc71b895f8fe`.
 - Compose tier: `bootstrap.yaml` + `ca.yaml` + `network.yaml`, project `supplyledger`, `bootstrap` and `ca` profiles. Three Orderers were running with retained ledger volumes following independently reviewed [NET-04](issue-16-net04.md); no Peer or CouchDB was running or started here. Native short-lived tools containers used only `supply-orderer`, read-only root filesystems, `/tmp` tmpfs and narrow read-only certificate/key mounts.
@@ -251,3 +251,93 @@ docker run --rm --pull=never --platform linux/arm64 --network supply-seller --re
 The error names proposal attempt ID `1584601cca1cd619219ce28edfe6d69c5c62ee649646870f56c084dc3f2ad751`. It is **not** a committed channel transaction ID; this failed local query produced no block height or validation code. A read-only check of the running Seller's retained startup log found `not deploying chaincode cscc`, `qscc` and `_lifecycle` because none was enabled. The three Peer source/rendered YAMLs omit `chaincode.system`. In pinned Fabric v3.1.5, [`chaincode.GlobalConfig`](https://github.com/hyperledger/fabric/blob/v3.1.5/core/chaincode/config.go#L64-L67) starts with an empty system-chaincode allowlist and loads it from that map; [`node.serve`](https://github.com/hyperledger/fabric/blob/v3.1.5/internal/peer/node/start.go#L770-L779) only deploys enabled in-process system chaincodes. This explains why the Endorser reached a legacy package lookup instead of the in-process `cscc`. It is a diagnosis, not a repaired or successful Peer join.
 
 The earlier three-Orderer `T-NET-04` PASS and byte-identical block-0 observations remain separate. Seller's `peer channel join`, its post-join list/getinfo, Buyer/Carrier prejoin lists and joins, anchors, Peer block-height/hash comparison and current-config `T-NET-03` are **NOT RUN** at this checkpoint. No Peer ledger success or canonical `genesisHash` is claimed. The failed Seller log must remain available after #16's separately reviewed system-chaincode configuration repair and Peer recreation.
+
+## Seller first native Peer join and local-ledger check (NET-06)
+
+- Test `M2-I18-NET06-02`; SPEC §§5.4 NET-06, 19.1. Execution source was clean local/remote main `82f24b4396347631d6bbbbd6c5766e6e5595732e`; `versions.lock.yaml` SHA-256 `422fba14294aaf9f0c40862fcd112ed3d2ed664cd5294c7bfe0aa14477fa234b`. Compose project `supplyledger` used `bootstrap.yaml` + `ca.yaml` + `network.yaml` with `bootstrap` and `ca` profiles. #16 had separately recreated and checked all three Peers with the in-process system-chaincode fix and preserved ledgers; independent review authorized **Seller only** for this first Peer join.
+- The retained original #17 `.runtime/channel/supplychannel.block` was Git-ignored, mode `0600`, 27,946 bytes. `shasum -a 256 .runtime/channel/supplychannel.block` returned `b0a5ec0894d45ca7b6577b8f576d176347ad90cb4f80ac18de2dea3cc5ebd08a` before the list and immediately before the join. The same command returned that value after the four native calls; its post-join output is retained as ignored mode-`0600` `.runtime/m2-issue18-peer-logs/seller-block-sha-after-join.log`. This is an **artifact-file checksum**, not a canonical Fabric `genesisHash`.
+- Four separate native, nonroot, read-only `supply-tools:m0-fabric3.1.5-ca1.5.22` containers used only `supply-seller`, exact `peer0.seller.supply.test:7051`, Seller admin local MSP and Seller TLS CA root. Each output was redirected to its own pre-created mode-`0600` ignored log under `.runtime/m2-issue18-peer-logs/` (`0700`). The four process exit codes below were observed from the command runner; no separate `.exit` marker files were captured. Retrospective mode-`0600` `.command.txt` copies adjacent to the four logs reproduce the literal commands below; `seller-runner-exits.observed.txt` records the runner-observed exits and explicitly states that contemporaneous `.exit` files do not exist. These retrospective copies are not additional executions. The prior first-list status-`500` FAIL log remains unchanged.
+
+The **prejoin list** did not mount the block:
+
+```sh
+docker run --rm --pull=never --platform linux/arm64 --network supply-seller --read-only --tmpfs /tmp --user "$(id -u):$(id -g)" \
+  --mount type=bind,src="$PWD/.runtime/network-config/peer0-seller.yaml",dst=/etc/hyperledger/fabric/core.yaml,readonly \
+  --mount type=bind,src="$PWD/.runtime/identities/seller/seller-admin1/msp",dst=/run/supply/msp,readonly \
+  --mount type=bind,src="$PWD/.runtime/trust/seller-tls-ca.pem",dst=/run/supply/peer-tls-root.pem,readonly \
+  -e FABRIC_CFG_PATH=/etc/hyperledger/fabric \
+  -e CORE_PEER_LOCALMSPID=SellerMSP -e CORE_PEER_MSPCONFIGPATH=/run/supply/msp \
+  -e CORE_PEER_ADDRESS=peer0.seller.supply.test:7051 -e CORE_PEER_TLS_ENABLED=true \
+  -e CORE_PEER_TLS_ROOTCERT_FILE=/run/supply/peer-tls-root.pem \
+  --entrypoint peer supply-tools:m0-fabric3.1.5-ca1.5.22 channel list \
+  > .runtime/m2-issue18-peer-logs/seller-pre-join-list-after-scc.log 2>&1
+```
+
+The **join** was one native CSCC proposal using the exact retained block, with no orderer admin or other organization secret mounted:
+
+```sh
+docker run --rm --pull=never --platform linux/arm64 --network supply-seller --read-only --tmpfs /tmp --user "$(id -u):$(id -g)" \
+  --mount type=bind,src="$PWD/.runtime/network-config/peer0-seller.yaml",dst=/etc/hyperledger/fabric/core.yaml,readonly \
+  --mount type=bind,src="$PWD/.runtime/identities/seller/seller-admin1/msp",dst=/run/supply/msp,readonly \
+  --mount type=bind,src="$PWD/.runtime/trust/seller-tls-ca.pem",dst=/run/supply/peer-tls-root.pem,readonly \
+  --mount type=bind,src="$PWD/.runtime/channel/supplychannel.block",dst=/run/channel/supplychannel.block,readonly \
+  -e FABRIC_CFG_PATH=/etc/hyperledger/fabric \
+  -e CORE_PEER_LOCALMSPID=SellerMSP -e CORE_PEER_MSPCONFIGPATH=/run/supply/msp \
+  -e CORE_PEER_ADDRESS=peer0.seller.supply.test:7051 -e CORE_PEER_TLS_ENABLED=true \
+  -e CORE_PEER_TLS_ROOTCERT_FILE=/run/supply/peer-tls-root.pem \
+  --entrypoint peer supply-tools:m0-fabric3.1.5-ca1.5.22 channel join -b /run/channel/supplychannel.block \
+  > .runtime/m2-issue18-peer-logs/seller-join.log 2>&1
+```
+
+The **postjoin list** was a separate native call without the block mount:
+
+```sh
+docker run --rm --pull=never --platform linux/arm64 --network supply-seller --read-only --tmpfs /tmp --user "$(id -u):$(id -g)" \
+  --mount type=bind,src="$PWD/.runtime/network-config/peer0-seller.yaml",dst=/etc/hyperledger/fabric/core.yaml,readonly \
+  --mount type=bind,src="$PWD/.runtime/identities/seller/seller-admin1/msp",dst=/run/supply/msp,readonly \
+  --mount type=bind,src="$PWD/.runtime/trust/seller-tls-ca.pem",dst=/run/supply/peer-tls-root.pem,readonly \
+  -e FABRIC_CFG_PATH=/etc/hyperledger/fabric \
+  -e CORE_PEER_LOCALMSPID=SellerMSP -e CORE_PEER_MSPCONFIGPATH=/run/supply/msp \
+  -e CORE_PEER_ADDRESS=peer0.seller.supply.test:7051 -e CORE_PEER_TLS_ENABLED=true \
+  -e CORE_PEER_TLS_ROOTCERT_FILE=/run/supply/peer-tls-root.pem \
+  --entrypoint peer supply-tools:m0-fabric3.1.5-ca1.5.22 channel list \
+  > .runtime/m2-issue18-peer-logs/seller-post-join-list.log 2>&1
+```
+
+The **getinfo** call separately queried Seller's local `supplychannel` ledger:
+
+```sh
+docker run --rm --pull=never --platform linux/arm64 --network supply-seller --read-only --tmpfs /tmp --user "$(id -u):$(id -g)" \
+  --mount type=bind,src="$PWD/.runtime/network-config/peer0-seller.yaml",dst=/etc/hyperledger/fabric/core.yaml,readonly \
+  --mount type=bind,src="$PWD/.runtime/identities/seller/seller-admin1/msp",dst=/run/supply/msp,readonly \
+  --mount type=bind,src="$PWD/.runtime/trust/seller-tls-ca.pem",dst=/run/supply/peer-tls-root.pem,readonly \
+  -e FABRIC_CFG_PATH=/etc/hyperledger/fabric \
+  -e CORE_PEER_LOCALMSPID=SellerMSP -e CORE_PEER_MSPCONFIGPATH=/run/supply/msp \
+  -e CORE_PEER_ADDRESS=peer0.seller.supply.test:7051 -e CORE_PEER_TLS_ENABLED=true \
+  -e CORE_PEER_TLS_ROOTCERT_FILE=/run/supply/peer-tls-root.pem \
+  --entrypoint peer supply-tools:m0-fabric3.1.5-ca1.5.22 channel getinfo -c supplychannel \
+  > .runtime/m2-issue18-peer-logs/seller-post-join-getinfo.log 2>&1
+```
+
+| Native call; ignored raw log SHA-256 | Expected | Actual process exit and response | Judgment |
+| --- | --- | --- | --- |
+| Prejoin list; `seller-pre-join-list-after-scc.log` `c5421d342e4f0c2d6d28af78aee5e609669b81a34478363f2b32ccc372fd161a` | Exit 0, empty list | **0**; `Channels peers has joined:` with no entries | **PASS**, prejoin state |
+| Join; `seller-join.log` `2c52d220a175622e4c4f9b9babc0419e5f7a12cae235a2c7a37119f5f85127e4` | Exit 0, CSCC accepts the original block | **0**; `Successfully submitted proposal to join channel` | **PASS**, native join proposal accepted |
+| Postjoin list; `seller-post-join-list.log` `ae4c73ce27f4ad305f3e33b286964eb2b9054ef3eaa5845590140a3844838652` | Exit 0, exactly `supplychannel` | **0**; list contains exactly `supplychannel` | **PASS**, local channel entry |
+| Getinfo; `seller-post-join-getinfo.log` `cb52eb704b05d4b86dd5dde5a1b3911b382f95f388dc6b36ce0ed9cac428874d` | Exit 0, local block height at least 1 | **0**; `height=1`, `currentBlockHash=XGi/CZ6VuTS2A0pNeqjFJEJ1HDC8i1b8u96bATjji6c=` | **PASS**, Seller local block-0 state |
+
+The `currentBlockHash` is the value returned by Seller's native `BlockchainInfo`; its equal-height comparison with Buyer and Carrier and #17's canonical genesis identity audit are **NOT RUN**. This local CSCC join did not submit an ordered channel or business transaction, so there is no committed txId or validation code from these four calls. Buyer and Carrier joins, anchors, cross-organization discovery, three-Peer same-height block-hash comparison and current-config `T-NET-03` remain **NOT RUN** at this Seller-only snapshot. The original Seller prejoin status-`500` FAIL remains recorded separately above; this later PASS does not erase it.
+
+### Seller post-join block-delivery TLS failure
+
+- Test `M2-I18-NET06-03`; expected: after the local join, Seller's delivery client authenticates with a Seller TLS client certificate to the Orderers' `7050` endpoints and establishes block delivery. Actual: **FAIL** at the TLS handshake, before an Orderer Deliver response or a new block. The local join and height-1 `BlockchainInfo` above remain valid observations; ongoing block delivery is **not PASS**.
+- A later **read-only** filtered `docker logs --timestamps --since 60m` capture, saved in ignored mode-`0600` `.runtime/m2-issue18-peer-logs/seller-delivery-tls-fail.filtered.log` (SHA-256 `73d48bf659cf080a3849c29b4ab241496260d6cb9d655c61dd938c9193183b79`), contains seven timestamped lines from the running Seller Peer and Orderer0. ANSI escapes were removed and Orderer0's remote IP/port was redacted. These were extracted after the native join, not captured by the four original CLI redirects. Seller's log reports `remote error: tls: certificate required` against each of `orderer0`, `orderer1` and `orderer2` at `7050`, followed by `peer.blocksprovider DeliverBlocks` connection/retry warnings. At `2026-09-25 16:39:44 UTC`, Orderer0 logged `Server TLS handshake failed ... tls: client didn't provide a certificate`.
+
+Sanitized lines from that later capture (UTC):
+
+```text
+2026-09-25T16:39:44.340915841Z [Seller peer → orderer0.orderer.supply.test:7050] connection error: "error reading server preface: remote error: tls: certificate required"
+2026-09-25T16:39:44.340819008Z [Orderer0] Server TLS handshake failed: tls: client didn't provide a certificate; remoteaddress=[redacted]
+```
+- Read-only cause check: all three tracked and rendered Peer YAMLs have `peer.tls.clientAuthRequired: false`, although `clientCert.file` and `clientKey.file` point to the Peer TLS leaf/key. Seller's leaf has explicit clientAuth EKU and verifies for `sslclient` against its pinned Seller TLS root. Pinned Fabric 3.1.5 [`loadDeliverServiceConfig`](https://github.com/hyperledger/fabric/blob/v3.1.5/core/deliverservice/config.go#L168-L193) copies `peer.tls.clientAuthRequired` into delivery `SecOpts.RequireClientCert` and reads the configured client cert/key **only when it is true**; the [CFT delivery dialer](https://github.com/hyperledger/fabric/blob/v3.1.5/core/deliverservice/deliveryclient.go#L180-L205) uses those options. The current `false` therefore explains the observed missing client certificate. Orderer `General.TLS.ClientAuthRequired` remains true; its client roots include the Seller TLS root. #16 must separately review, apply and verify the three-Peer configuration/runtime repair before further native joins. No Orderer TLS check was weakened here.
+- No additional operator-triggered Peer join, anchor or ordered transaction was attempted in this diagnosis; the running Seller Peer continued its automatic delivery retries. Buyer/Carrier native joins remain **NOT RUN** pending the #16 repair and independent live review. No committed txId, new block height or validation code is inferred from the delivery retry logs.
