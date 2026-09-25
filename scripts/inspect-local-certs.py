@@ -9,7 +9,9 @@ channel MSP or a live Fabric authorization decision.
 import csv
 import hashlib
 import json
+import os
 import re
+import shutil
 import stat
 import subprocess
 import sys
@@ -17,8 +19,9 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent.parent
-IDENTITIES = ROOT / ".runtime" / "identities"
-TRUST = ROOT / ".runtime" / "trust"
+RUNTIME = Path(os.environ.get("M1_RUNTIME_DIR", ROOT / ".runtime")).resolve()
+IDENTITIES = RUNTIME / "identities"
+TRUST = RUNTIME / "trust"
 FIELDS = (
     "organization", "identity", "purpose", "issued_in", "ca_root",
     "ca_root_sha256", "issuer", "subject", "serial_hex", "aki_hex",
@@ -71,10 +74,28 @@ EXPECTED_OU = {
 
 
 def run(*args, input_bytes=None):
-    result = subprocess.run(args, input=input_bytes, capture_output=True, check=False)
+    command = (OPENSSL, *args[1:]) if args[0] == "openssl" else args
+    result = subprocess.run(command, input=input_bytes, capture_output=True, check=False)
     if result.returncode:
-        raise RuntimeError(f"command failed ({result.returncode}): {' '.join(map(str, args))}")
+        raise RuntimeError(f"command failed ({result.returncode}): {' '.join(map(str, command))}")
     return result.stdout
+
+
+def select_openssl():
+    candidates = (shutil.which("openssl"), "/opt/homebrew/bin/openssl",
+                  "/usr/local/bin/openssl")
+    for candidate in dict.fromkeys(filter(None, candidates)):
+        try:
+            version = subprocess.run((candidate, "version"), capture_output=True,
+                                     text=True, check=False)
+            help_text = subprocess.run((candidate, "x509", "-help"),
+                                       capture_output=True, text=True, check=False)
+        except OSError:
+            continue
+        if version.returncode == 0 and version.stdout.startswith("OpenSSL 3.") \
+                and "-dateopt" in help_text.stdout + help_text.stderr:
+            return candidate
+    raise RuntimeError("OpenSSL 3 with x509 -dateopt is required for M1 certificate inspection")
 
 
 def cert_lines(path):
@@ -161,10 +182,11 @@ def inspect(path, roots):
         raise ValueError(f"unexpected subject CN for {org}/{identity}: {subject}")
 
     msp = identity_dir / "msp"
-    keys = list((msp / "keystore").glob("*_sk"))
-    if len(keys) != 1:
-        raise ValueError(f"expected one signing key for {org}/{identity}")
-    key = keys[0]
+    keystore = msp / "keystore"
+    entries = list(keystore.iterdir())
+    if len(entries) != 1 or not entries[0].name.endswith("_sk"):
+        raise ValueError(f"expected one signing key and no other keystore entries for {org}/{identity}")
+    key = entries[0]
     if key.is_symlink() or key.parent.is_symlink():
         raise ValueError(f"symlinked signing key for {org}/{identity}")
     cert_pub = run("openssl", "x509", "-in", str(path), "-pubkey", "-noout")
@@ -242,7 +264,7 @@ def inspect(path, roots):
         public_key_sha256=hashlib.sha256(cert_der).hexdigest(),
         supply_user_id=attributes.get("supply.userId", ""),
         supply_role=attributes.get("supply.role", ""),
-        cert_path=str(path.relative_to(ROOT)),
+        cert_path=str(Path(".runtime") / path.relative_to(RUNTIME)),
         cert_owner_uid_gid=cert_owner, cert_mode=cert_mode,
         key_owner_uid_gid=key_owner, key_mode=key_mode,
         identity_dir_mode=owner(identity_dir)[1],
@@ -251,6 +273,8 @@ def inspect(path, roots):
 
 
 def main():
+    global OPENSSL
+    OPENSSL = select_openssl()
     roots = []
     for pem in sorted(TRUST.glob("*-ca.pem")):
         lines = cert_lines(pem)

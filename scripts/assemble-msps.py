@@ -17,7 +17,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent.parent
-RUNTIME = ROOT / ".runtime"
+RUNTIME = Path(os.environ.get("M1_RUNTIME_DIR", ROOT / ".runtime")).resolve()
 IDENTITIES = RUNTIME / "identities"
 TRUST = RUNTIME / "trust"
 PUBLIC = RUNTIME / "public-msps"
@@ -66,6 +66,10 @@ def pin_roots():
         path = TRUST / f"{name}.pem"
         data = regular_file(path)
         require(data.startswith(b"-----BEGIN CERTIFICATE-----"), f"invalid root PEM: {path}")
+        require(stat.S_IMODE(path.stat().st_mode) == 0o600,
+                f"unexpected local CA root copy mode: {name}")
+        require((path.stat().st_uid, path.stat().st_gid) == (os.getuid(), os.getgid()),
+                f"unexpected local CA root copy owner/group: {name}")
         require(fingerprint(path) == row["sha256_fingerprint"],
                 f"CA root fingerprint differs from the measured manifest: {name}")
         result = subprocess.run(["openssl", "verify", "-CAfile", str(path), str(path)],
