@@ -1,5 +1,7 @@
 # M2 #18 — pinned Discovery CLI preparation
 
+The later first Seller-only live Discovery query returned **FAIL** at the unregistered gRPC service; its separate observation is recorded at the end. Buyer and Carrier queries remain **NOT RUN**.
+
 - Test: M2-I18-NET07-TOOL-01, SPEC.md §§2, 5.4 NET-07, 19.1 and 20.1. **PASS** for offline tool provenance, build context, image content and native CLI flags only. Live three-organization Discovery, anchor/gossip behavior, and NET-07 are **NOT RUN**.
 - Execution source for the archive check and build: isolated branch issue/18-m2-discovery-tools based on clean local/remote main 8ecb5632bfcbaf738d3fb883011fdb6b6eaa905c; this candidate diff was not yet committed. The branch was subsequently fast-forwarded to main 0fb8c1c49a2ab1d6a14dd1dc6f64157c926042fd without conflict, and the affected static, digest, binary-SHA and help checks passed again. Candidate versions.lock.yaml SHA-256: e4600225619dd24545b047623ab22090a03317c1b60ee898ff08c1778efa64d1. Its measuredAtUtc now records the observed new tools-image build completion, 2026-09-25T17:58:29Z; unchanged lock fields retain their earlier M0 measurements.
 - Resolve the introducing source commit after independent review with `git log --diff-filter=A -1 --format=%H -- evidence/m2/issue-18-discovery-tooling.md`. The candidate had no commit at execution, so no final source hash is invented here.
@@ -44,3 +46,36 @@ Each group has a separate mode-0600 .command.sh, .log and .exit under the Git-ig
 The backup retained old index/id sha256:6b466c4dbd8aee240cbbc4c95860c4bf0b7a0de83b3edc808bc3dc71b895f8fe and ARM64 platform sha256:518f2c0569e28415082bce18a7d680a2232d811085542f13d51c0ca789e60c23. The new canonical tag measured index/id sha256:459219f8ab900356b8914d37cc3c6dc573ec471a33a81b5a4fc6809bb2034872 and ARM64 platform sha256:edb72eb8ee100c04acffdeb310482d87ceb2228e5b3afc23b362d20c855d1fd3, exactly matching the new lock. The actual doctor and verify-m0 logs ended in PASS; verify-m0 also checked the seven binary SHA values, version/platform, OS package manifest, both Go modules, build context and tracked-secret scan. The independent seven-cli-sha log contains seven OK lines, including discover. The nine Orderer/Peer/CouchDB container IDs and running states, plus nine named-volume Name/CreatedAt pairs, were byte-identical in the pre/post inventories. This establishes tooling and identity stability for this window; it does not prove ledger-content equality or live gossip.
 
 **PASS** for M2-I18-NET07-TOOL-02. The local code and image were ready for independently reviewed integration, but no online discover peers query, new anchor/current-config comparison, gossip connection test, channel transaction or new-block delivery occurred in this checkpoint. NET-07 and any new channel height/txId/validation code remain **NOT RUN**.
+
+## First Seller-only native Discovery: service-registration failure
+
+- Test: M2-I18-NET07-01, SPEC.md §§5.4 NET-07 and 19.1. **FAIL** at the Peer gRPC service-registration stage. This was the first authorized live discover peers request, read-only and limited to Seller. Buyer and Carrier were held for separate review and are **NOT RUN**; complete three-organization NET-07 remains incomplete.
+- Execution source: clean local/remote main 81a1483a40cf6c66dee31eb40c47d55364c41c0d. versions.lock.yaml SHA-256 e4600225619dd24545b047623ab22090a03317c1b60ee898ff08c1778efa64d1; canonical self-built tools image index/id sha256:459219f8ab900356b8914d37cc3c6dc573ec471a33a81b5a4fc6809bb2034872 and Linux ARM64 platform sha256:edb72eb8ee100c04acffdeb310482d87ceb2228e5b3afc23b362d20c855d1fd3. Existing Compose tier: bootstrap.yaml + ca.yaml + network.yaml, bootstrap and ca profiles. The earlier verified block-0 header hash 5c68bf099e95b934b6034a4d7aa8c52442751c30bc8b56fcbbde9b0138e38ba7 is a carried reference; this query did not fetch a block.
+- Preparation: at 2026-09-25T18:33:02Z–18:33:07Z a separate mode-0600 seller-preflight.command.sh checked clean source/lock/image, running Seller Peer, exactly one own admin ECert key and one own peer0-tls key, own public TLS root, then ran make verify-m1. Actual preflight exit 0; its command SHA-256 was 0282b5f4967d6436f66c6f991a7c1c3ab547a276f5532cd9e8c7c8603e11e296 and log SHA-256 3e5842953c38b07fe00e52fd2efd083e7701db65e2d8012633ad94dcaab7df46. The M1 tool's historical live-test NOT RUN footer is not a verdict on this later Discovery request.
+- Native query: at 2026-09-25T18:33:30Z, seller-peers.command.sh invoked the pinned discover peers CLI once in a nonroot, read-only, short-lived container on supply-seller. The three read-only mounts were Seller admin1 ECert MSP for request signing, Seller peer0-tls MSP for the TLS client certificate/key, and Seller TLS CA public root for server verification. Flags used SellerMSP, channel supplychannel and exact server peer0.seller.supply.test:7051. No other organization's private material, Docker socket, insecure TLS flag, Orderer admin credential or published port was present. Literal command SHA-256: 2f81c84bd2a39df4ab949d043914430b2d3e1fd7437295622e380eda4e33001d.
+
+```sh
+docker run --rm --pull=never --platform linux/arm64 --network supply-seller \
+  --read-only --tmpfs /tmp --user "$(id -u):$(id -g)" \
+  --mount "type=bind,src=$PWD/.runtime/identities/seller/seller-admin1/msp,dst=/run/supply/msp,readonly" \
+  --mount "type=bind,src=$PWD/.runtime/identities/seller/seller-peer0-tls/msp,dst=/run/supply/tls,readonly" \
+  --mount "type=bind,src=$PWD/.runtime/trust/seller-tls-ca.pem,dst=/run/supply/peer-tls-root.pem,readonly" \
+  --entrypoint sh supply-tools:m0-fabric3.1.5-ca1.5.22 -ceu '
+    set -- /run/supply/msp/keystore/*_sk
+    test "$#" -eq 1 && test -f "$1"
+    user_key=$1
+    set -- /run/supply/tls/keystore/*_sk
+    test "$#" -eq 1 && test -f "$1"
+    exec discover --peerTLSCA /run/supply/peer-tls-root.pem \
+      --tlsCert /run/supply/tls/signcerts/cert.pem --tlsKey "$1" \
+      --userKey "$user_key" --userCert /run/supply/msp/signcerts/cert.pem \
+      --MSP SellerMSP peers --channel supplychannel \
+      --server peer0.seller.supply.test:7051
+  '
+```
+- Expected: a signed channel-scoped Discovery response from the Seller Peer with membership and external endpoints, to be checked against Seller/Buyer/Carrier MSPs and certificates. Actual: process exit **1**; stdout was **0 bytes** with SHA-256 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855. Stderr was **3979 bytes**, SHA-256 786cea067d390789328ba7c2e127875d5e55543bf677f6918238df8ac7139e48. It showed the gRPC channel to the exact Seller DNS:7051 reaching READY, then the concise failure: “rpc error: code = Unimplemented desc = unknown service discovery.Discovery”. This shows the request passed the connection/TLS phase and failed before a Discovery application response; it does not establish a returned member set or gossip visibility.
+- Raw .command.sh, .stdout.json, .stderr.log, .exit and UTC markers are retained only under the Git-ignored main-runtime directory .runtime/m2-issue18-discovery, mode 0700 with each file mode 0600. Seller's prior Peer startup warning, “Discovery service must be enabled for embedded gateway”, was preserved in a separate mode-0600 filtered log with SHA-256 3dfa32a4e192b986d7af309a044844c81e5a24f4abb6c8b55b8ebf2ae5debda7. No credential value or raw certificate is copied into this report.
+
+Read-only cause analysis: all three tracked Peer templates and their retained rendered YAMLs omit peer.discovery.enabled, and no running Peer environment contains its override key. In pinned Fabric v3.1.5, [the config loader reads it as a boolean](https://github.com/hyperledger/fabric/blob/v3.1.5/core/peer/config.go#L238) and [the Peer registers discovery.Discovery only when true](https://github.com/hyperledger/fabric/blob/v3.1.5/internal/peer/node/start.go#L765-L781). The [official v3.1.5 sample explicitly enables it](https://github.com/hyperledger/fabric/blob/v3.1.5/sampleconfig/core.yaml#L445-L459). The missing configuration, actual startup warning and unimplemented RPC together support the inference that the service was not registered. A repaired Peer has not yet been tested. The same pinned startup path would also register the embedded Gateway because these Peer templates already set gateway.enabled=true; that side effect needs separate review and is not business-readiness evidence.
+
+**FAIL** for Seller M2-I18-NET07-01; full NET-07 remains incomplete. No Discovery member or identity response was returned, so no cross-organization endpoint, height or certificate result can be claimed. This read-only RPC submitted no channel or business transaction; no txId, new block height or validation code exists for it. Buyer/Carrier live queries, repair, migration and retry remain **NOT RUN** at this checkpoint.
