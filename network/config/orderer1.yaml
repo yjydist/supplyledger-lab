@@ -1,0 +1,51 @@
+# M2 #16 source template. prepare-m2-nodes.py replaces key-path markers
+# with the only verified existing M1 TLS key; never put key bytes here.
+General:
+  ListenAddress: 0.0.0.0
+  ListenPort: 7050
+  LocalMSPID: OrdererMSP
+  LocalMSPDir: /run/supply/msp
+  TLS:
+    Enabled: true
+    Certificate: /run/supply/tls/signcerts/cert.pem
+    PrivateKey: /run/supply/tls/keystore/__ORDERER_TLS_KEY__
+    RootCAs:
+      - /run/supply/tls/tlscacerts/orderer-tls-ca.pem
+    ClientAuthRequired: true
+    ClientRootCAs:
+      - /run/supply/client-roots/orderer.pem
+      - /run/supply/client-roots/seller.pem
+      - /run/supply/client-roots/buyer.pem
+      - /run/supply/client-roots/carrier.pem
+  Cluster:
+    ClientCertificate: /run/supply/tls/signcerts/cert.pem
+    ClientPrivateKey: /run/supply/tls/keystore/__ORDERER_TLS_KEY__
+    # The shared 7050 listener uses General.TLS.Certificate/PrivateKey on
+    # the Raft server side. #17 pins the same leaf in both consenter fields.
+FileLedger:
+  Location: /var/hyperledger/production/orderer
+Operations:
+  ListenAddress: 0.0.0.0:9444
+  TLS:
+    Enabled: true
+    Certificate: /run/supply/admin-server-tls/signcerts/cert.pem
+    PrivateKey: /run/supply/admin-server-tls/keystore/__ORDERER_ADMIN_TLS_KEY__
+    ClientAuthRequired: true
+    ClientRootCAs:
+      - /run/supply/admin-client-root.pem
+Metrics:
+  Provider: prometheus
+Admin:
+  ListenAddress: 0.0.0.0:9443
+  TLS:
+    Enabled: true
+    Certificate: /run/supply/admin-server-tls/signcerts/cert.pem
+    PrivateKey: /run/supply/admin-server-tls/keystore/__ORDERER_ADMIN_TLS_KEY__
+    ClientAuthRequired: true
+    ClientRootCAs:
+      - /run/supply/admin-client-root.pem
+ChannelParticipation:
+  Enabled: true
+Consensus:
+  WALDir: /var/hyperledger/production/orderer/etcdraft/wal
+  SnapDir: /var/hyperledger/production/orderer/etcdraft/snapshot

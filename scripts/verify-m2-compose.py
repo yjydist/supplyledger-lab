@@ -126,28 +126,35 @@ def check_nodes(model):
             require(service.get("read_only") is True, f"{name}: writable node root filesystem")
             require(service.get("environment") == {"FABRIC_CFG_PATH": "/etc/hyperledger/fabric"},
                     f"{name}: environment could override TLS/MSP configuration")
-            require(not service.get("env_file"), f"{name}: unreviewed environment file")
             require(not service.get("command") and not service.get("entrypoint"),
                     f"{name}: unreviewed command or entrypoint override")
 
         if kind == "orderer":
+            require(not service.get("env_file"), f"{name}: unreviewed environment file")
             host = f"{name}.orderer.supply.test"
             check_service_network(service, {"fabric": host, "orderer": host})
             check_mounts(service, f"{name}-ledger", "/var/hyperledger/production", {
-                "/etc/hyperledger/fabric/orderer.yaml": f"network/config/{name}.yaml",
+                "/etc/hyperledger/fabric/orderer.yaml": f".runtime/network-config/{name}.yaml",
                 "/run/supply/msp": f".runtime/identities/orderer/{name}/msp",
                 "/run/supply/tls": f".runtime/identities/orderer/{name}-tls/msp",
                 "/run/supply/admin-server-tls":
                     f".runtime/identities/orderer/{name}-admin-server-tls/msp",
                 "/run/supply/admin-client-root.pem":
                     ".runtime/trust/orderer-admin-tls-ca.pem",
+                **{f"/run/supply/client-roots/{org}.pem":
+                       f".runtime/trust/{org}-tls-ca.pem"
+                   for org in ("orderer",) + ORG},
             })
         elif kind == "peer":
             org = name.removeprefix("peer0-")
             host = f"peer0.{org}.supply.test"
+            require(service.get("env_file") == [{
+                "path": str(ROOT / f".secrets/peer-couchdb/{org}.env"),
+                "required": False,
+            }], f"{name}: wrong private CouchDB credential file")
             check_service_network(service, {"fabric": host, org: host})
             check_mounts(service, f"{name}-ledger", "/var/hyperledger/production", {
-                "/etc/hyperledger/fabric/core.yaml": f"network/config/{name}.yaml",
+                "/etc/hyperledger/fabric/core.yaml": f".runtime/network-config/{name}.yaml",
                 "/run/supply/msp": f".runtime/identities/{org}/{org}-peer0/msp",
                 "/run/supply/tls": f".runtime/identities/{org}/{org}-peer0-tls/msp",
                 "/run/supply/orderer-tls-root.pem": ".runtime/trust/orderer-tls-ca.pem",

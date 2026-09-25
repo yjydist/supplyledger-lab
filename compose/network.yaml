@@ -2,7 +2,8 @@ name: supplyledger
 
 # M2 node topology. Use with bootstrap.yaml and ca.yaml so the existing
 # organization networks and CA volumes retain their original identity.
-# Node configuration files are supplied by M2 #16; missing binds fail closed.
+# M2 #16 renders node configuration from tracked templates and existing M1
+# identities into ignored .runtime/network-config; missing binds fail closed.
 x-orderer: &orderer
   image: docker.io/hyperledger/fabric-orderer:3.1.5@sha256:dcb4c042237993a6f537b2f54e701e749f8e108f25c0cbe0c6742c205fccc3d5
   pull_policy: never
@@ -43,7 +44,7 @@ services:
         source: orderer0-ledger
         target: /var/hyperledger/production
       - type: bind
-        source: ../network/config/orderer0.yaml
+        source: ../.runtime/network-config/orderer0.yaml
         target: /etc/hyperledger/fabric/orderer.yaml
         read_only: true
         bind: {create_host_path: false}
@@ -67,6 +68,26 @@ services:
         target: /run/supply/admin-client-root.pem
         read_only: true
         bind: {create_host_path: false}
+      - type: bind
+        source: ../.runtime/trust/orderer-tls-ca.pem
+        target: /run/supply/client-roots/orderer.pem
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ../.runtime/trust/seller-tls-ca.pem
+        target: /run/supply/client-roots/seller.pem
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ../.runtime/trust/buyer-tls-ca.pem
+        target: /run/supply/client-roots/buyer.pem
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ../.runtime/trust/carrier-tls-ca.pem
+        target: /run/supply/client-roots/carrier.pem
+        read_only: true
+        bind: {create_host_path: false}
   orderer1:
     <<: *orderer
     networks:
@@ -79,7 +100,7 @@ services:
         source: orderer1-ledger
         target: /var/hyperledger/production
       - type: bind
-        source: ../network/config/orderer1.yaml
+        source: ../.runtime/network-config/orderer1.yaml
         target: /etc/hyperledger/fabric/orderer.yaml
         read_only: true
         bind: {create_host_path: false}
@@ -103,6 +124,26 @@ services:
         target: /run/supply/admin-client-root.pem
         read_only: true
         bind: {create_host_path: false}
+      - type: bind
+        source: ../.runtime/trust/orderer-tls-ca.pem
+        target: /run/supply/client-roots/orderer.pem
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ../.runtime/trust/seller-tls-ca.pem
+        target: /run/supply/client-roots/seller.pem
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ../.runtime/trust/buyer-tls-ca.pem
+        target: /run/supply/client-roots/buyer.pem
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ../.runtime/trust/carrier-tls-ca.pem
+        target: /run/supply/client-roots/carrier.pem
+        read_only: true
+        bind: {create_host_path: false}
   orderer2:
     <<: *orderer
     networks:
@@ -115,7 +156,7 @@ services:
         source: orderer2-ledger
         target: /var/hyperledger/production
       - type: bind
-        source: ../network/config/orderer2.yaml
+        source: ../.runtime/network-config/orderer2.yaml
         target: /etc/hyperledger/fabric/orderer.yaml
         read_only: true
         bind: {create_host_path: false}
@@ -139,8 +180,31 @@ services:
         target: /run/supply/admin-client-root.pem
         read_only: true
         bind: {create_host_path: false}
+      - type: bind
+        source: ../.runtime/trust/orderer-tls-ca.pem
+        target: /run/supply/client-roots/orderer.pem
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ../.runtime/trust/seller-tls-ca.pem
+        target: /run/supply/client-roots/seller.pem
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ../.runtime/trust/buyer-tls-ca.pem
+        target: /run/supply/client-roots/buyer.pem
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ../.runtime/trust/carrier-tls-ca.pem
+        target: /run/supply/client-roots/carrier.pem
+        read_only: true
+        bind: {create_host_path: false}
   peer0-seller:
     <<: *peer
+    env_file:
+      - path: ../.secrets/peer-couchdb/seller.env
+        required: false
     networks:
       fabric:
         aliases: [peer0.seller.supply.test]
@@ -151,7 +215,7 @@ services:
         source: peer0-seller-ledger
         target: /var/hyperledger/production
       - type: bind
-        source: ../network/config/peer0-seller.yaml
+        source: ../.runtime/network-config/peer0-seller.yaml
         target: /etc/hyperledger/fabric/core.yaml
         read_only: true
         bind: {create_host_path: false}
@@ -172,6 +236,9 @@ services:
         bind: {create_host_path: false}
   peer0-buyer:
     <<: *peer
+    env_file:
+      - path: ../.secrets/peer-couchdb/buyer.env
+        required: false
     networks:
       fabric:
         aliases: [peer0.buyer.supply.test]
@@ -182,7 +249,7 @@ services:
         source: peer0-buyer-ledger
         target: /var/hyperledger/production
       - type: bind
-        source: ../network/config/peer0-buyer.yaml
+        source: ../.runtime/network-config/peer0-buyer.yaml
         target: /etc/hyperledger/fabric/core.yaml
         read_only: true
         bind: {create_host_path: false}
@@ -203,6 +270,9 @@ services:
         bind: {create_host_path: false}
   peer0-carrier:
     <<: *peer
+    env_file:
+      - path: ../.secrets/peer-couchdb/carrier.env
+        required: false
     networks:
       fabric:
         aliases: [peer0.carrier.supply.test]
@@ -213,7 +283,7 @@ services:
         source: peer0-carrier-ledger
         target: /var/hyperledger/production
       - type: bind
-        source: ../network/config/peer0-carrier.yaml
+        source: ../.runtime/network-config/peer0-carrier.yaml
         target: /etc/hyperledger/fabric/core.yaml
         read_only: true
         bind: {create_host_path: false}

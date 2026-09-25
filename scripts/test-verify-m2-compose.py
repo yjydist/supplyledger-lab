@@ -63,6 +63,14 @@ def main():
              '    volumes: ["/var/run/docker.sock:/var/run/docker.sock"]\n  orderer0:')),
         ("Peer TLS-off environment override", "environment could override TLS/MSP",
          peer_tls_off),
+        ("cross-org Peer credential file", "wrong private CouchDB credential file",
+         lambda text: replace_once(text,
+                                   "../.secrets/peer-couchdb/seller.env",
+                                   "../.secrets/peer-couchdb/buyer.env")),
+        ("wrong admin client trust root", "unexpected source",
+         lambda text: replace_once(text,
+                                   "../.runtime/trust/orderer-admin-tls-ca.pem",
+                                   "../.runtime/trust/orderer-tls-ca.pem")),
     )
     with tempfile.TemporaryDirectory(prefix="supply-m2-compose-test-") as dirname:
         directory = Path(dirname)

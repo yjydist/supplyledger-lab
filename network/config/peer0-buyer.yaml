@@ -1,0 +1,62 @@
+# M2 #16 source template. CouchDB credentials are supplied by the ignored
+# per-organization Peer env file; this file must contain no password.
+peer:
+  id: peer0.buyer.supply.test
+  networkId: supplyledger
+  listenAddress: 0.0.0.0:7051
+  address: peer0.buyer.supply.test:7051
+  addressAutoDetect: false
+  mspConfigPath: /run/supply/msp
+  localMspId: BuyerMSP
+  fileSystemPath: /var/hyperledger/production
+  gateway:
+    enabled: true
+  gossip:
+    bootstrap: ""
+    externalEndpoint: peer0.buyer.supply.test:7051
+    orgLeader: true
+    useLeaderElection: false
+    state:
+      enabled: false
+  tls:
+    enabled: true
+    clientAuthRequired: false
+    cert:
+      file: /run/supply/tls/signcerts/cert.pem
+    key:
+      file: /run/supply/tls/keystore/__PEER_TLS_KEY__
+    rootcert:
+      file: /run/supply/tls/tlscacerts/buyer-tls-ca.pem
+    clientCert:
+      file: /run/supply/tls/signcerts/cert.pem
+    clientKey:
+      file: /run/supply/tls/keystore/__PEER_TLS_KEY__
+deliveryclient:
+  blockGossipEnabled: false
+ledger:
+  state:
+    stateDatabase: CouchDB
+    couchDBConfig:
+      couchDBAddress: couchdb0.buyer.supply.test:5984
+      # username/password are intentionally absent; private CORE_* env only.
+  history:
+    enableHistoryDatabase: true
+  snapshots:
+    rootDir: /var/hyperledger/production/snapshots
+chaincode:
+  # M3 #22 supplies the external builder and CCaaS image before deployment.
+  externalBuilders: []
+operations:
+  listenAddress: 0.0.0.0:9444
+  tls:
+    enabled: true
+    cert:
+      file: /run/supply/tls/signcerts/cert.pem
+    key:
+      file: /run/supply/tls/keystore/__PEER_TLS_KEY__
+    clientAuthRequired: true
+    clientRootCAs:
+      files:
+        - /run/supply/tls/tlscacerts/buyer-tls-ca.pem
+metrics:
+  provider: prometheus
