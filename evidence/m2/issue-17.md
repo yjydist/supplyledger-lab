@@ -119,3 +119,64 @@ After the #18 three-Peer evidence appendix reached clean local/remote main `8ecb
 | `bash -n` on seven [runbook](../../docs/m2-channel-native.md#later-net-08-fetch-current-config-from-each-live-ledger) shell blocks; Python `py_compile`; `git diff --check` | Exits `0`; no runbook fetch was executed. | **PASS**, syntax/diff |
 
 The [runbook](../../docs/m2-channel-native.md#later-net-08-fetch-current-config-from-each-live-ledger) requires each Orderer `osnadmin fetch config` via dedicated admin mTLS and each Peer `peer channel fetch config` **without `-o`** via its own Deliver service, followed by six separate native decodes. The verifier requires an explicitly hashed approved **decoded JSON** baseline, original decoded block-0 SHA and header hash, then compares all six decoded block headers and complete CONFIG data while rechecking M1 trust and governance. An authorized later #19 BatchTimeout change requires a newly reviewed raw block plus decoded baseline and both file digests; six mutually agreeing nodes alone do not authorize drift. This decoded-only comparison does **not** independently recompute raw `BlockDataHash` or verify raw-block-to-JSON provenance. A future live PASS requires six retained native raw fetches, pinned one-to-one decodes, raw/decoded file hashes and independent review as separate gates. It also does not validate a later CONFIG `last_update` signature set or governance authorization; #19 must retain and assess that transaction separately. #18's local Peer block-0 fetches are already recorded above; **six-node current live CONFIG fetch/decode, full NET-08 / `T-NET-03` and live MSP enforcement remain NOT RUN**. This preparation sent no channel transaction, so no new committed txId, block height or validation code exists.
+
+## Six-node live current-CONFIG read-only checkpoint
+
+`M2-I17-10` / NET-08 / the configuration portion of `T-NET-03` ran on 2026-09-25 UTC after the #18 Orderer and three Peer joins. The execution source was clean local/remote main `0fb8c1c49a2ab1d6a14dd1dc6f64157c926042fd`; resolve this later report appendix's source commit with `git log -1 --format=%H -- evidence/m2/issue-17.md`. Version lock SHA-256 remained `422fba14294aaf9f0c40862fcd112ed3d2ed664cd5294c7bfe0aa14477fa234b`; the pinned local CLI was `supply-tools:m0-fabric3.1.5-ca1.5.22` on `linux/arm64`. Compose tier was project `supplyledger`, `compose/bootstrap.yaml` + `compose/ca.yaml` + `compose/network.yaml` with `bootstrap`/`ca` profiles. This checkpoint started no network service and changed no channel configuration. The accepted `supplychannel` genesis **header** hash was `5c68bf099e95b934b6034a4d7aa8c52442751c30bc8b56fcbbde9b0138e38ba7`; the original raw block-file checksum was separately `b0a5ec0894d45ca7b6577b8f576d176347ad90cb4f80ac18de2dea3cc5ebd08a`.
+
+Prepared inputs were the ignored original block and decoded `inspect-block.json` (SHA-256 `2e3c9994819ae2f5ec5c6a5741f6bf558d0c364380ffee3cac10930f8f4b4e09`), the measured M1 public MSPs/consenter leaves, a dedicated Orderer admin TLS client, and each business organization's own admin ECert MSP and short-lived Peer TLS transport pair. Before fetch, `make verify-m0`, `make verify-m1`, `make verify-m2-initial-block`, and `make verify-m2-nodes` exited `0`; all six Orderer/Peer containers were running their locked digests. The first `make verify-m2-node-block M1_RUNTIME_DIR=$PWD/.runtime` preflight exited **2/NOT RUN** because the operator omitted required `M2_INSPECT_BLOCK`. It was corrected to `make verify-m2-node-block M1_RUNTIME_DIR=$PWD/.runtime M2_INSPECT_BLOCK=$PWD/.runtime/channel/inspect-block.json`, which exited **0/PASS** before the first fetch. The original block, inspected JSON and lock checksums matched the prior pins. `.runtime/channel/current-config` did not exist before this checkpoint; it was created ignored with mode `0700` and `umask 077`.
+
+The exact first native Orderer0 fetch and Seller Peer-local fetch commands are written in the [committed runbook](../../docs/m2-channel-native.md#later-net-08-fetch-current-config-from-each-live-ledger). Each actual command was first retained verbatim in a distinct ignored `<node>.command.sh` file; Orderer1/2 substitute only their exact admin endpoint/output name, and Buyer/Carrier substitute their own organization, network, rendered core.yaml, admin ECert MSP, TLS pair/root and output name. The Peer commands omit `-o` and reject an `ORDERER_ADDRESS` override, so they use their own local Deliver service. All use `--pull=never`, pinned `linux/arm64`, a read-only container root and narrow mounts. The exact six offline `configtxlator proto_decode --type common.Block` commands were separately retained as `<node>.decode.command.sh` with `--network none` and only the ignored current-config directory mounted; none mounted a private identity. Each of the twelve command files was run **once**, with a separate mode-`0600` log, exit marker and raw block or decoded JSON output. The invocation/capture form was:
+
+```sh
+umask 077
+out=$PWD/.runtime/channel/current-config
+set +e
+bash "$out/orderer0.command.sh" > "$out/orderer0.log" 2>&1
+code=$?
+set -e
+printf '%s\n' "$code" > "$out/orderer0.exit"
+# Repeat separately for the other five fetch command files, then separately
+# for each <node>.decode.command.sh -> <node>.decode.log/.decode.exit.
+```
+
+| Node | Native fetch, process exit and response | Fetch command SHA-256 | Raw CONFIG block bytes / SHA-256 | Offline decode command SHA-256 | Decoded JSON bytes / SHA-256 |
+| --- | --- | --- | --- | --- | --- |
+| Orderer0 | dedicated admin mTLS `:9443`; `0`, HTTP `200` | `4da67610285914114e37e331ad0bf333258ef771c9efbe35dbf8487cfef65778` | `27946`, `b0a5ec0894d45ca7b6577b8f576d176347ad90cb4f80ac18de2dea3cc5ebd08a` | `6dbea473442d3f5719af8bac076958bf1066201c9c101b4a9493c93a3c72b3aa` | `69885`, `2e3c9994819ae2f5ec5c6a5741f6bf558d0c364380ffee3cac10930f8f4b4e09` |
+| Orderer1 | dedicated admin mTLS `:9443`; `0`, HTTP `200` | `a1fb3c00cbc61831747ebeca06ac8a45a0f30bf2f261c47d9d21f31d42873b8b` | `27946`, same Orderer SHA | `d7a7ee23b51413bed49def1cfa3be62af8cf319501cf0c78888147c0d0366583` | `69885`, same Orderer JSON SHA |
+| Orderer2 | dedicated admin mTLS `:9443`; `0`, HTTP `200` | `ce7f038de018517b395ada4aec7f69f91bc19ba5097e9d4b2e42259a8c0b92bd` | `27946`, same Orderer SHA | `b022560378c7a6a2f4015283a74a179ae911367f2c102bd3a9d0e8d9d4c23abe` | `69885`, same Orderer JSON SHA |
+| Seller Peer | own admin ECert + TLS pair; `0`, local `Received block: 0` / `last config block: 0` | `842674bdc164b74df6dd9b2e57af038c2d2d1d72dd4302ae21227465f12ddb6a` | `27947`, `042d7e1c2cf18b83bc792575414ed7ff2b811300c718a9ac00c3320919da7137` | `1e49a5eb17a50ae8f905d88be202fbc71726f8e4b3ee89447a84b6e807d79a02` | `69889`, `0348ef92ab65cc8203e555c74a22ba7151f43d3a2c9071cf772c064e10c194ba` |
+| Buyer Peer | own admin ECert + TLS pair; `0`, local block/config `0` | `88a420e597533a898361b225b0e7f1346f4af115988d6b4b49e022e350b9087d` | `27947`, same Peer SHA | `f0aa141344eab8ebdaf646fad38a00bd5ce99b8f5070bbdde46aadff1bba73d3` | `69889`, same Peer JSON SHA |
+| Carrier Peer | own admin ECert + TLS pair; `0`, local block/config `0` | `b67fe1b393bb96e25e339970d8be9dfed8edb6ab34bc844c21fc0ea56ffe3502` | `27947`, same Peer SHA | `628497b8cfe4e45564cb393dfb5782fff1421b229b66ad4f499a9ec80628b157` | `69889`, same Peer JSON SHA |
+
+All six decode command exit markers were also `0`; every one of the 48 retained command/log/exit/artifact files was mode `0600`. The three Orderer raw blocks were byte-identical to the original #17 block. The three Peer raw blocks were byte-identical to one another but one byte longer than the Orderer/original file because metadata slot 2 differs, exactly as the earlier #18 local block-0 evidence showed. All six decoded **header and data** fields matched the original despite that metadata distinction. Each was `supplychannel` CONFIG block number `0`, config sequence `0`, with the four pinned public MSPs, three Raft consenters, three founder anchors, required capability/ACL/policy/`mod_policy`, and the initial `1s` batch timeout.
+
+A separate read-only Orderer1 summary used the following exact first command after its successful native fetch. It exited **1/FAIL** at the strict log assertion (`AssertionError`); the native HTTP-200 log actually has a trailing blank line, so Python `splitlines()` returned `['Status: 200', '']`. This ad hoc summary had no separately retained command/log file; the failure and traceback were observed in the interactive command output, and the original native triad was retained unchanged:
+
+```sh
+python3 - <<'PY'
+from pathlib import Path
+from hashlib import sha256
+from stat import S_IMODE
+r=Path('.runtime/channel/current-config'); n='orderer1'
+assert (r/f'{n}.exit').read_text().strip()=='0'
+assert (r/f'{n}.log').read_text().splitlines()==['Status: 200']
+for suffix in ('command.sh','log','exit','config.block'):
+ p=r/f'{n}.{suffix}'; assert S_IMODE(p.stat().st_mode)==0o600
+print(n,'exit=0 status=200 size='+str((r/f'{n}.config.block').stat().st_size),'sha256='+sha256((r/f'{n}.config.block').read_bytes()).hexdigest())
+PY
+```
+
+The corrected rerun changed only that assertion to `assert (r/f'{n}.log').read_text().splitlines()[0]=='Status: 200'` and exited **0/PASS**, printing Orderer1's 27,946-byte original raw SHA-256 above. The native Orderer1 fetch was **not** rerun.
+
+```sh
+make verify-m2-current-config \
+  M1_RUNTIME_DIR="$PWD/.runtime" M2_CHANNEL_DIR="$PWD/.runtime/channel" \
+  M2_CURRENT_CONFIG_DIR="$PWD/.runtime/channel/current-config" \
+  M2_APPROVED_CONFIG="$PWD/.runtime/channel/inspect-block.json" \
+  M2_APPROVED_SHA256=2e3c9994819ae2f5ec5c6a5741f6bf558d0c364380ffee3cac10930f8f4b4e09 \
+  M2_INITIAL_SHA256=2e3c9994819ae2f5ec5c6a5741f6bf558d0c364380ffee3cac10930f8f4b4e09 \
+  M2_GENESIS_HASH=5c68bf099e95b934b6034a4d7aa8c52442751c30bc8b56fcbbde9b0138e38ba7
+```
+
+Expected: the six actual native current CONFIG decodes match the independently retained original/approved block-0 CONFIG header and data, with no extra governance policy or changed root/consenter. Actual: exit **0**, current verifier PASS for approved decoded JSON SHA-256 pin, M1 trust/governance structure and all six matching decoded header/data; canonical block-0 header hash `5c68bf09…38ba7`. **PASS** for NET-08 / `T-NET-03`'s initial-versus-current configuration comparison. The verifier itself does not independently recompute raw `BlockDataHash`; the retained twelve native command/exit/log/artifact sets, pinned one-to-one decodes and their checksums are the source-provenance evidence for this judgment. No configuration update, Peer join, business transaction or channel write was attempted by this checkpoint, so it produced no submitted governance txId, new block height or validation code. The observed current CONFIG is block `0` / sequence `0`; earlier #18 evidence measured each local Peer ledger at height `1`. Full live MSP enforcement, a later #19 governance update/signature authorization, post-genesis block delivery and Discovery checks remain **NOT RUN**.

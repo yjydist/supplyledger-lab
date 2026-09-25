@@ -277,7 +277,8 @@ def main():
     check_orderer(channel, args.consenter_certs, args.m1_runtime_dir,
                   cert_inventory(args.inventory))
     check_policies(channel)
-    print("NOT RUN: current channel config, live MSP enforcement and full T-NET-03 await #18")
+    print("SCOPE: this initial-block command did not inspect current live config or MSP "
+          "enforcement; see separate current-CONFIG evidence for T-NET-03 status")
 
 
 if __name__ == "__main__":
