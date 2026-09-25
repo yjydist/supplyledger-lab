@@ -1,0 +1,176 @@
+# SupplyLedger application-channel block input for Fabric 3.1.5.
+# This file has one application profile and no consortium/system channel.
+# Paths below are container paths in the native NET-03 command; the host's
+# existing M1 public MSPs and Orderer TLS signcerts are mounted read-only.
+
+Organizations:
+  - &OrdererOrg
+    Name: OrdererMSP
+    ID: OrdererMSP
+    MSPDir: /work/public-msps/OrdererMSP/msp
+    Policies:
+      Readers:
+        Type: Signature
+        Rule: "OR('OrdererMSP.admin', 'OrdererMSP.orderer')"
+      Writers:
+        Type: Signature
+        Rule: "OR('OrdererMSP.admin', 'OrdererMSP.orderer')"
+      Admins:
+        Type: Signature
+        Rule: "OR('OrdererMSP.admin')"
+      Endorsement:
+        Type: Signature
+        Rule: "OR('OrdererMSP.orderer')"
+    OrdererEndpoints:
+      - orderer0.orderer.supply.test:7050
+      - orderer1.orderer.supply.test:7050
+      - orderer2.orderer.supply.test:7050
+
+  - &SellerOrg
+    Name: SellerMSP
+    ID: SellerMSP
+    MSPDir: /work/public-msps/SellerMSP/msp
+    Policies:
+      Readers:
+        Type: Signature
+        Rule: "OR('SellerMSP.admin', 'SellerMSP.client', 'SellerMSP.peer')"
+      Writers:
+        Type: Signature
+        Rule: "OR('SellerMSP.admin', 'SellerMSP.client', 'SellerMSP.peer')"
+      Admins:
+        Type: Signature
+        Rule: "OR('SellerMSP.admin')"
+      Endorsement:
+        Type: Signature
+        Rule: "OR('SellerMSP.peer')"
+    AnchorPeers:
+      - Host: peer0.seller.supply.test
+        Port: 7051
+
+  - &BuyerOrg
+    Name: BuyerMSP
+    ID: BuyerMSP
+    MSPDir: /work/public-msps/BuyerMSP/msp
+    Policies:
+      Readers:
+        Type: Signature
+        Rule: "OR('BuyerMSP.admin', 'BuyerMSP.client', 'BuyerMSP.peer')"
+      Writers:
+        Type: Signature
+        Rule: "OR('BuyerMSP.admin', 'BuyerMSP.client', 'BuyerMSP.peer')"
+      Admins:
+        Type: Signature
+        Rule: "OR('BuyerMSP.admin')"
+      Endorsement:
+        Type: Signature
+        Rule: "OR('BuyerMSP.peer')"
+    AnchorPeers:
+      - Host: peer0.buyer.supply.test
+        Port: 7051
+
+  - &CarrierOrg
+    Name: CarrierMSP
+    ID: CarrierMSP
+    MSPDir: /work/public-msps/CarrierMSP/msp
+    Policies:
+      Readers:
+        Type: Signature
+        Rule: "OR('CarrierMSP.admin', 'CarrierMSP.client', 'CarrierMSP.peer')"
+      Writers:
+        Type: Signature
+        Rule: "OR('CarrierMSP.admin', 'CarrierMSP.client', 'CarrierMSP.peer')"
+      Admins:
+        Type: Signature
+        Rule: "OR('CarrierMSP.admin')"
+      Endorsement:
+        Type: Signature
+        Rule: "OR('CarrierMSP.peer')"
+    AnchorPeers:
+      - Host: peer0.carrier.supply.test
+        Port: 7051
+
+Profiles:
+  SupplyChannel:
+    Policies:
+      Readers:
+        Type: ImplicitMeta
+        Rule: "ANY Readers"
+      Writers:
+        Type: ImplicitMeta
+        Rule: "ANY Writers"
+      Admins:
+        Type: Signature
+        Rule: "AND('OrdererMSP.admin', OutOf(2, 'SellerMSP.admin', 'BuyerMSP.admin', 'CarrierMSP.admin'))"
+    Capabilities:
+      V3_0: true
+
+    Orderer:
+      OrdererType: etcdraft
+      Organizations:
+        - *OrdererOrg
+      BatchTimeout: 1s
+      BatchSize:
+        MaxMessageCount: 20
+        PreferredMaxBytes: 512 KB
+        AbsoluteMaxBytes: 10 MB
+      EtcdRaft:
+        Consenters:
+          - Host: orderer0.orderer.supply.test
+            Port: 7050
+            ClientTLSCert: /work/orderer-consenter-certs/orderer0.pem
+            ServerTLSCert: /work/orderer-consenter-certs/orderer0.pem
+          - Host: orderer1.orderer.supply.test
+            Port: 7050
+            ClientTLSCert: /work/orderer-consenter-certs/orderer1.pem
+            ServerTLSCert: /work/orderer-consenter-certs/orderer1.pem
+          - Host: orderer2.orderer.supply.test
+            Port: 7050
+            ClientTLSCert: /work/orderer-consenter-certs/orderer2.pem
+            ServerTLSCert: /work/orderer-consenter-certs/orderer2.pem
+        Options:
+          TickInterval: 500ms
+          ElectionTick: 10
+          HeartbeatTick: 1
+          MaxInflightBlocks: 5
+          SnapshotIntervalSize: 16 MB
+      Policies:
+        Readers:
+          Type: ImplicitMeta
+          Rule: "ANY Readers"
+        Writers:
+          Type: ImplicitMeta
+          Rule: "ANY Writers"
+        Admins:
+          Type: Signature
+          Rule: "OR('OrdererMSP.admin')"
+        BlockValidation:
+          Type: ImplicitMeta
+          Rule: "ANY Writers"
+      Capabilities:
+        V2_0: true
+
+    Application:
+      Organizations:
+        - *SellerOrg
+        - *BuyerOrg
+        - *CarrierOrg
+      Policies:
+        Readers:
+          Type: ImplicitMeta
+          Rule: "ANY Readers"
+        Writers:
+          Type: ImplicitMeta
+          Rule: "ANY Writers"
+        Admins:
+          Type: Signature
+          Rule: "OutOf(2, 'SellerMSP.admin', 'BuyerMSP.admin', 'CarrierMSP.admin')"
+        LifecycleEndorsement:
+          Type: Signature
+          Rule: "OutOf(2, 'SellerMSP.peer', 'BuyerMSP.peer', 'CarrierMSP.peer')"
+        Endorsement:
+          Type: Signature
+          Rule: "AND('SellerMSP.peer', 'BuyerMSP.peer')"
+      ACLs:
+        peer/Propose: /Channel/Application/Readers
+      Capabilities:
+        V2_5: true
