@@ -26,6 +26,8 @@ The same preparation creates three distinct random CouchDB admin passwords in ig
 
 `verify-m2-node-block` additionally reads the **native** #17 `inspect-block.json`, checks all three decoded client/server consenter PEM byte strings against the original M1 leaf files, and verifies the effective Orderer cluster client and shared-listener server certificate paths in the rendered node YAML. It requires the native artifact; a missing artifact must remain NOT RUN. `make test-m2-nodes M2_SOURCE_RUNTIME_DIR="$M2_SOURCE_RUNTIME_DIR" M2_INSPECT_BLOCK=<path>` performs the same comparison using ephemeral node configs and credentials in a temporary directory and rejects a modified consenter certificate.
 
+Each Orderer source and rendered YAML must also set `ChannelParticipation.MaxRequestBodySize: 1 MB`. Fabric 3.1.5's [sample Orderer YAML](https://github.com/hyperledger/fabric/blob/v3.1.5/sampleconfig/orderer.yaml#L287-L291) uses this value. The [channel participation REST handler](https://github.com/hyperledger/fabric/blob/v3.1.5/orderer/common/channelparticipation/restapi.go#L391-L401) applies it to the complete multipart join request. It is separate from the Orderer gRPC message and block batch limits. The first native #18 Orderer0 join exposed the missing field: the effective limit was `0`, and a 27,946-byte block upload received HTTP 400 before block validation. Check the HTTP status and channel list; `osnadmin` process exit `0` alone does not prove a join.
+
 ## One-time recovery from the first Orderer0 root-path failure
 
 The first native `orderer0` process at source commit `f7960652b809eaedd53a637445cb583c6f0cda3e` exited while reading a guessed TLS MSP root filename. Its failed container, six rendered YAMLs and ignored logs still exist in the retained main runtime. After the reviewed root-path correction is integrated, `prepare-m2-nodes` must reject those old rendered YAMLs rather than silently overwrite them. Perform this explicit one-time replacement before retrying. Do not touch M1 identities, the six existing credential env files, or the named ledger volume.
@@ -90,16 +92,112 @@ test "$(docker inspect --format '{{.State.Status}}' supplyledger-orderer0-1)" = 
 docker inspect --format '{{.State.Status}}:{{.State.ExitCode}}' supplyledger-orderer0-1
 ~~~
 
-## Native first-run sequence to execute later
+## One-time recovery from the first Orderer0 join HTTP 400
+
+At source commit `4376ed4c0c6ae176f3240037c0e3a927c930d0c9`, #18 sent the original #17 block once to Orderer0. The CLI exited `0`, but the admin API returned HTTP `400` with `multipart: NextPart: http: request body too large`. A separate native list still returned HTTP `200`, `systemChannel:null` and `channels:null`. The three running Orderers each logged effective `ChannelParticipation.MaxRequestBodySize = 0`. The failure was at multipart parsing, before block validation or `JoinChannel`; no channel, txId, block height, validation code or live genesisHash resulted. Preserve `.runtime/m2-issue18-logs/orderer0-join.log`, `orderer0-post-400-list.log` and the original `.runtime/channel/supplychannel.block` byte-for-byte. See [#18's native command and evidence](../evidence/m2/issue-18.md#first-native-orderer0-join-failure).
+
+Only after this `1 MB` source change is independently reviewed and integrated into the main checkout that owns the retained runtime, perform the following one-time migration. Confirm fresh native admin lists still show no joined channel before changing the node configs; if any node has joined, stop and review its ledger state. The archived path must not already exist. All three nodes are unjoined, so stop them **individually** before replacing their host config files. This preserves the three named ledger volumes and avoids a running process depending on a replaced bind path. Do not remove the containers or volumes, regenerate the #17 block, reissue M1 identities or rotate the three passwords in the six existing credential env files.
+
+~~~sh
+set -eu
+umask 077
+m1_file_hashes() {
+  python3 - <<'PY'
+from hashlib import sha256
+from pathlib import Path
+root = Path('.runtime/identities')
+assert root.is_dir() and not root.is_symlink()
+for path in sorted(root.rglob('*')):
+    assert not path.is_symlink(), path
+    if path.is_file():
+        print(sha256(path.read_bytes()).hexdigest(), path.relative_to(root))
+PY
+}
+test -f .runtime/m2-issue18-logs/orderer0-join.log
+test -f .runtime/m2-issue18-logs/orderer0-post-400-list.log
+test ! -e .runtime/m2-node-logs/network-config-before-join-limit
+test ! -L .runtime/m2-node-logs/network-config-before-join-limit
+test "$(shasum -a 256 .runtime/channel/supplychannel.block | awk '{print $1}')" = b0a5ec0894d45ca7b6577b8f576d176347ad90cb4f80ac18de2dea3cc5ebd08a
+test "$(shasum -a 256 .runtime/channel/inspect-block.json | awk '{print $1}')" = 2e3c9994819ae2f5ec5c6a5741f6bf558d0c364380ffee3cac10930f8f4b4e09
+make verify-m1 > .runtime/m2-node-logs/m1-before-join-limit.log 2>&1
+m1_file_hashes > .runtime/m2-node-logs/m1-identity-before-join-limit.sha256
+for name in orderer0 orderer1 orderer2; do
+  test "$(docker inspect --format '{{.State.Status}}' "supplyledger-${name}-1")" = running
+  docker inspect --format '{{.Id}}' "supplyledger-${name}-1" > ".runtime/m2-node-logs/${name}-before-join-limit-id"
+  docker volume inspect --format '{{.Name}} {{.CreatedAt}}' "supplyledger_${name}_ledger" > ".runtime/m2-node-logs/${name}-join-limit-volume-before"
+done
+git rev-parse HEAD > .runtime/m2-node-logs/join-limit-source-commit
+shasum -a 256 .runtime/network-config/*.yaml > .runtime/m2-node-logs/network-config-before-join-limit.sha256
+shasum -a 256 .secrets/couchdb/*.env .secrets/peer-couchdb/*.env > .runtime/m2-node-logs/m2-env-before-join-limit.sha256
+shasum -a 256 .runtime/channel/supplychannel.block .runtime/channel/inspect-block.json > .runtime/m2-node-logs/channel-before-join-limit.sha256
+for name in orderer0 orderer1 orderer2; do
+  docker compose -p supplyledger -f compose/bootstrap.yaml -f compose/ca.yaml -f compose/network.yaml --profile bootstrap --profile ca stop "$name"
+  test "$(docker inspect --format '{{.State.Status}}' "supplyledger-${name}-1")" = exited
+done
+mv .runtime/network-config .runtime/m2-node-logs/network-config-before-join-limit
+make prepare-m2-nodes
+make verify-m2-nodes
+make verify-m2-node-block M2_INSPECT_BLOCK=.runtime/channel/inspect-block.json
+make verify-m1 > .runtime/m2-node-logs/m1-after-join-limit.log 2>&1
+m1_file_hashes > .runtime/m2-node-logs/m1-identity-after-join-limit.sha256
+cmp .runtime/m2-node-logs/m1-identity-before-join-limit.sha256 .runtime/m2-node-logs/m1-identity-after-join-limit.sha256
+shasum -a 256 .secrets/couchdb/*.env .secrets/peer-couchdb/*.env > .runtime/m2-node-logs/m2-env-after-join-limit.sha256
+cmp .runtime/m2-node-logs/m2-env-before-join-limit.sha256 .runtime/m2-node-logs/m2-env-after-join-limit.sha256
+shasum -a 256 .runtime/channel/supplychannel.block .runtime/channel/inspect-block.json > .runtime/m2-node-logs/channel-after-join-limit.sha256
+cmp .runtime/m2-node-logs/channel-before-join-limit.sha256 .runtime/m2-node-logs/channel-after-join-limit.sha256
+shasum -a 256 .runtime/network-config/*.yaml > .runtime/m2-node-logs/network-config-after-join-limit.sha256
+~~~
+
+The retained M1 identity files and ignored credential files must remain byte-identical, proven by the before/after manifests and `cmp`; both `make verify-m1` runs must pass. The preflight verifies new config mode `0600`, directory mode `0700`, exact node key paths and the original #17 Raft certificate bytes. Compare all six new configs with the archive: **only** the new `1 MB` line in each Orderer is allowed; all three Peer configs must be identical. These comparisons print no private value.
+
+~~~sh
+python3 - <<'PY'
+from pathlib import Path
+old_dir = Path('.runtime/m2-node-logs/network-config-before-join-limit')
+new_dir = Path('.runtime/network-config')
+assert {p.name for p in old_dir.iterdir()} == {p.name for p in new_dir.iterdir()}
+for index in range(3):
+    name = f'orderer{index}.yaml'
+    old = (old_dir / name).read_bytes()
+    needle = b'ChannelParticipation:\n  Enabled: true\n'
+    assert old.count(needle) == 1, name
+    expected = old.replace(needle, needle + b'  MaxRequestBodySize: 1 MB\n')
+    assert (new_dir / name).read_bytes() == expected, name
+for org in ('seller', 'buyer', 'carrier'):
+    name = f'peer0-{org}.yaml'
+    assert (new_dir / name).read_bytes() == (old_dir / name).read_bytes(), name
+print('PASS: only three reviewed Orderer join-body limits changed')
+PY
+~~~
+
+If any comparison fails, leave the Orderers stopped and preserve both config directories for review. After all checks pass, recreate **one Orderer at a time** using `--force-recreate` so the process receives the new file bind; `docker compose restart` may retain the old bind. Start with Orderer0 and seek a live checkpoint before Orderer1/2. For each node, check the new container ID, the unchanged named volume identity, running status, and startup log line `ChannelParticipation.MaxRequestBodySize = 1048576`. Rerun native dedicated-client `osnadmin channel list` against its 9443 DNS endpoint and require HTTP 200 with `systemChannel:null`, `channels:null` before #18 retries a join. Keep full logs ignored and mode `0600`; do not print environment variables, keys or passwords.
+
+~~~sh
+set -eu
+umask 077
+name=orderer0
+docker compose -p supplyledger -f compose/bootstrap.yaml -f compose/ca.yaml -f compose/network.yaml --profile bootstrap --profile ca up -d --no-deps --force-recreate "$name"
+docker inspect --format '{{.Id}}' "supplyledger-${name}-1" > ".runtime/m2-node-logs/${name}-after-join-limit-id"
+! cmp -s ".runtime/m2-node-logs/${name}-before-join-limit-id" ".runtime/m2-node-logs/${name}-after-join-limit-id"
+docker volume inspect --format '{{.Name}} {{.CreatedAt}}' "supplyledger_${name}_ledger" > ".runtime/m2-node-logs/${name}-join-limit-volume-after"
+cmp ".runtime/m2-node-logs/${name}-join-limit-volume-before" ".runtime/m2-node-logs/${name}-join-limit-volume-after"
+test "$(docker inspect --format '{{.State.Status}}' "supplyledger-${name}-1")" = running
+docker logs "supplyledger-${name}-1" > ".runtime/m2-node-logs/${name}-join-limit-container.log" 2>&1
+rg -F 'ChannelParticipation.MaxRequestBodySize = 1048576' ".runtime/m2-node-logs/${name}-join-limit-container.log"
+~~~
+
+Repeat the last block for `orderer1` and `orderer2` only after Orderer0's reviewed checkpoint, with separate native commands and logs. A successful HTTP status is necessary for a later join; after a join, also require the channel to appear and eventually report `active`. Full T-NET-04 remains NOT RUN until all three Orderers reach that state.
+
+## Native first-run sequence and remaining steps
 
 These are separate operations, not a `make network-up` shortcut. Before each operation, record source commit, version-lock SHA-256, image digest, Compose tier, command/exit code and redacted output under `evidence/m2/`.
 
 1. After #17's native `configtxgen` and static block decode, compare the **actual decoded** three consenters' client/server certificate PEM bytes to each `ordererN-tls` signcert and the effective `General.Cluster.ClientCertificate`/shared `General.TLS.Certificate` paths. Confirm cert-key match, SAN and ordinary TLS root. Keep the generated block and JSON ignored.
-2. Start `orderer0`, `orderer1`, `orderer2` **one at a time** using the merged Compose overlays and `up -d --no-deps <name>`; inspect each actual process, mount and image digest. No channel is joined at this step. For each 9443 endpoint, use a short-lived Orderer-only tools container with the ordinary `orderer-tls-ca.pem` as `osnadmin --ca-file` and the existing dedicated `osnadmin-client1-tls` cert/key as `--client-cert`/`--client-key`. `osnadmin channel list` should return HTTP 200, `systemChannel:null` and the observed prejoin `channels:null`. A request with no client certificate must fail at TLS; do not confuse CLI argument rejection with a handshake test. Record the server and client certificate fingerprints, exit/status and failure stage. #18 owns the full three-node wrong-CA negative matrix and native channel joins.
+2. Start `orderer0`, `orderer1`, `orderer2` **one at a time** using the merged Compose overlays and `up -d --no-deps <name>`; inspect each actual process, mount and image digest. No channel is joined at this step. For each 9443 endpoint, use a short-lived Orderer-only tools container with the ordinary `orderer-tls-ca.pem` as `osnadmin --ca-file` and the existing dedicated `osnadmin-client1-tls` cert/key as `--client-cert`/`--client-key`. `osnadmin channel list` should return HTTP 200, `systemChannel:null` and the observed prejoin `channels:null`. A request with no client certificate must fail at TLS; do not confuse CLI argument rejection with a handshake test. Record the server and client certificate fingerprints, exit/status and failure stage. #18's [three-node admin mTLS matrix](../evidence/m2/issue-18.md#admin-mtls-boundary-before-joining) has now passed; #18 owns the native channel joins.
 3. After #18 has joined all three Orderers with individual `osnadmin channel join` commands, start `couchdb0-seller`, `couchdb0-buyer`, `couchdb0-carrier` separately, check authenticated `/_up` from scoped tool contexts without logging passwords, then start `peer0-seller`, `peer0-buyer`, `peer0-carrier` separately. Check process/TLS/operations health and CouchDB connection. This is NET-06 component startup; Peer channel join and network-level readiness remain #18 work. Do not call a process that merely listens on 7051 ready for `supplychannel` or `supplycc`.
 
 ## T-NET-02 live inspection and evidence
 
 After those nine services run, rerun `make network-config` and use a structured, redacted `docker inspect` assertion over all real Orderer, Peer, CouchDB and any extant CA containers. Check the locked image digest and expected command, status, exact network membership/DNS, no published management ports, no Docker socket, each node's own read-only identity binds, no cross-organization private MSP, and a distinct named ledger/data volume. Inspect **all** runtime mounts, including any Docker-image-created anonymous parent mounts, and verify ledger/WAL/snapshot paths reside on the declared named volumes. Check the tracked repository and image build contexts contain no credentials or private key material; report counts/paths/fingerprints only. Preserve sanitized actual results, not a copied raw `docker inspect` JSON object.
 
-Record T-NET-02 as **NOT RUN** until these live checks succeed. T-NET-04, full admin negative matrix, Peer joins, current channel configuration, block-hash comparison and chaincode/transaction checks remain **NOT RUN** here until their owners execute them. The `genesisHash` field stays NOT RUN until the real block-0 identity is observed; a candidate block's file SHA-256 is only an artifact checksum. No txId, block height or validation code is invented for offline preflight.
+Record T-NET-02 as **NOT RUN** until these live checks succeed. The three-node dedicated-client and wrong-CA admin mTLS matrix is **PASS** in [#18 evidence](../evidence/m2/issue-18.md#admin-mtls-boundary-before-joining). Full T-NET-04, Peer joins, current channel configuration, block-hash comparison and chaincode/transaction checks remain **NOT RUN** until their owners execute them. The `genesisHash` field stays NOT RUN until the real block-0 identity is observed; a candidate block's file SHA-256 is only an artifact checksum. No txId, block height or validation code is invented for offline preflight.

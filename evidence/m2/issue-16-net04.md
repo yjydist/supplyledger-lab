@@ -1,6 +1,6 @@
 # M2 #16 — NET-04 channel-less Orderer startup
 
-This records the three **native**, individual channel-less Orderer starts. The first Orderer0 process failed while loading a TLS root file; that failure remains below, followed by its reviewed retry. After independent review of that retry, Orderer1 and Orderer2 were started and checked separately. No channel join, Peer or CouchDB startup was attempted.
+This records the three **native**, individual channel-less Orderer starts. The first Orderer0 process failed while loading a TLS root file; that failure remains below, followed by its reviewed retry. After independent review of that retry, Orderer1 and Orderer2 were started and checked separately. At this NET-04 startup checkpoint, no channel join, Peer or CouchDB startup was attempted. A later first #18 Orderer0 join failure is recorded at the end.
 
 - Test: `M2-I16-NET04-01` (SPEC.md §§5.2–5.4, 19.1). Full `T-NET-04` and `T-NET-02`: **NOT RUN**.
 - Source commit at attempt: `f7960652b809eaedd53a637445cb583c6f0cda3e`; version lock SHA-256 `422fba14294aaf9f0c40862fcd112ed3d2ed664cd5294c7bfe0aa14477fa234b`.
@@ -60,4 +60,31 @@ After independent review of Orderer0, the retained main checkout still had sourc
 
 Each first-start command ran separately with `--no-deps`; no loop or one-click network startup was used. The Orderer1/2 admin tool invocations used the exact Docker options and three narrow read-only mounts shown for Orderer0 above, changing only the endpoint hostname and ignored log name. The no-client tests used the same public-root-only curl command shown above, changing only the hostname and ignored log name. Actual command output and full startup logs are retained as mode 0600 ignored `.runtime/m2-node-logs/orderer{1,2}-start.log`, `orderer{1,2}-container.log`, `orderer{1,2}-admin-list.log` and `orderer{1,2}-no-client-cert.log`. The Orderer1/2 startup logs each show mutual TLS and channel participation enabled and `Beginning to serve requests`, with no FATA/ERRO line.
 
-The preflight verifier's earlier `NOT RUN` line describes only what **that preflight invocation** did; it did not inspect these running containers. The follow-up source wording explicitly says the preflight did not start or inspect live endpoints. The live results above come from native Compose, `docker inspect`, `osnadmin` and real curl TLS handshakes. All three Orderers were still running after the last probe. The candidate block file SHA-256 is `b0a5ec0894d45ca7b6577b8f576d176347ad90cb4f80ac18de2dea3cc5ebd08a`, but genesisHash remains **NOT RUN** until a live joined channel is observed. All channel joins, current channel config, Peer/CouchDB startup, full T-NET-02 and the wrong-CA admin-client matrix remain **NOT RUN**; no txId, block height or validation code is claimed here.
+The preflight verifier's earlier `NOT RUN` line describes only what **that preflight invocation** did; it did not inspect these running containers. The follow-up source wording explicitly says the preflight did not start or inspect live endpoints. The live results above come from native Compose, `docker inspect`, `osnadmin` and real curl TLS handshakes. All three Orderers were still running after the last probe. The candidate block file SHA-256 is `b0a5ec0894d45ca7b6577b8f576d176347ad90cb4f80ac18de2dea3cc5ebd08a`, but genesisHash remains **NOT RUN** until a live joined channel is observed. At this NET-04 checkpoint, all channel joins, current channel config, Peer/CouchDB startup, full T-NET-02 and the wrong-CA admin-client matrix were **NOT RUN**; no txId, block height or validation code is claimed here. #18 subsequently completed the three-node admin-client matrix and attempted one Orderer0 join as recorded below.
+
+## #18 first Orderer0 join failure and #16 request-limit repair
+
+- Test: `M2-I16-JOIN-CAP-01`, supporting #18's `M2-I18-NET05-01` (SPEC.md §§5.4, 19.1, 20.1): **FAIL** at the admin multipart parser. Full `T-NET-04` remains **NOT RUN**.
+- Source commit at actual request: `4376ed4c0c6ae176f3240037c0e3a927c930d0c9`; version lock SHA-256 `422fba14294aaf9f0c40862fcd112ed3d2ed664cd5294c7bfe0aa14477fa234b`. Compose tier: project `supplyledger`, `bootstrap.yaml` + `ca.yaml` + `network.yaml`, `bootstrap` and `ca` profiles. Three Orderers running; no Peer or CouchDB started.
+- Prepared data: unchanged original #17 `.runtime/channel/supplychannel.block`, 27,946 bytes, artifact-file SHA-256 `b0a5ec0894d45ca7b6577b8f576d176347ad90cb4f80ac18de2dea3cc5ebd08a`. This is **not** the live `genesisHash`. Ignored main-runtime outputs are `.runtime/m2-issue18-logs/orderer0-join.log` and `orderer0-post-400-list.log`, both mode `0600` under a `0700` directory.
+
+The actual first native join used this single, scoped tools-container command in the retained main checkout. Its full output was redirected directly to an ignored log; no private key bytes were printed or copied into evidence.
+
+~~~sh
+docker run --rm --pull=never --platform linux/arm64 --network supply-orderer --read-only --tmpfs /tmp --user "$(id -u):$(id -g)" \
+  --mount type=bind,src="$PWD/.runtime/channel/supplychannel.block",dst=/run/channel/supplychannel.block,readonly \
+  --mount type=bind,src="$PWD/.runtime/trust/orderer-tls-ca.pem",dst=/run/trust/orderer-tls-ca.pem,readonly \
+  --mount type=bind,src="$PWD/.runtime/identities/orderer/osnadmin-client1-tls/msp/signcerts/cert.pem",dst=/run/admin/client.pem,readonly \
+  --mount type=bind,src="$PWD/.runtime/identities/orderer/osnadmin-client1-tls/msp/keystore",dst=/run/admin/keystore,readonly \
+  --entrypoint sh supply-tools:m0-fabric3.1.5-ca1.5.22 -ceu \
+  'set -- /run/admin/keystore/*_sk; test "$#" -eq 1 && test -f "$1"; exec osnadmin channel join --channelID supplychannel --config-block /run/channel/supplychannel.block -o orderer0.orderer.supply.test:9443 --ca-file /run/trust/orderer-tls-ca.pem --client-cert /run/admin/client.pem --client-key "$1"' \
+  > .runtime/m2-issue18-logs/orderer0-join.log 2>&1
+~~~
+
+| Expected | Actual | Judgment |
+| --- | --- | --- |
+| HTTP 201 and a subsequent channel list showing `supplychannel`; the final active state requires further checks | `osnadmin` process exit `0`, but response `Status: 400` and `cannot read form from request body: multipart: NextPart: http: request body too large`. A separate native post-request `osnadmin channel list` exited `0`, returned `Status: 200`, `"systemChannel": null`, `"channels": null`. | **FAIL**, request parsing before block validation or ledger/consensus join; no channel was created |
+
+All three tracked and rendered Orderer YAMLs omitted `ChannelParticipation.MaxRequestBodySize`. Their actual startup logs printed effective `ChannelParticipation.MaxRequestBodySize = 0`, preserved in ignored `.runtime/m2-issue18-logs/effective-size-before.log`. Fabric 3.1.5's [sample configuration](https://github.com/hyperledger/fabric/blob/v3.1.5/sampleconfig/orderer.yaml#L287-L291) sets `1 MB`; its [REST handler](https://github.com/hyperledger/fabric/blob/v3.1.5/orderer/common/channelparticipation/restapi.go#L391-L401) rejects oversized multipart input before validating the block. The proposed #16 repair sets `1 MB` explicitly in each Orderer template and asserts source/rendered values. The [one-time migration procedure](../../docs/m2-node-config-native.md#one-time-recovery-from-the-first-orderer0-join-http-400) requires pre/post `make verify-m1`, complete M1 identity-file hash manifests, and equality checks for those files, six credential env files and original block/inspect JSON; it retains old configs/logs and all three ledger volumes. These migration checks remain **NOT RUN**.
+
+At this evidence checkpoint, config migration, Orderer recreation, join retry, Orderer1/2 joins and Peer/CouchDB startup are **NOT RUN**. No transaction was submitted to a channel: txId, committed block height and validation code are **NOT RUN**. Live `genesisHash` and the final `active` state of each Orderer are also **NOT RUN**. The failed request must be retained as a failure after later repair, not rewritten as a pass.

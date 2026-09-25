@@ -190,6 +190,10 @@ def credential_files(secrets_dir, prepare):
 def rendered_config(name, keys):
     template = ROOT / "network/config" / f"{name}.yaml"
     require(template.is_file() and not template.is_symlink(), f"missing node template: {name}")
+    if name in ORDERERS:
+        source_scalars, _ = yaml_fields(template)
+        require(source_scalars.get(("ChannelParticipation", "MaxRequestBodySize")) == "1 MB",
+                f"{name}: source MaxRequestBodySize must be 1 MB")
     data = template.read_text()
     replacements = (
         {"__ORDERER_TLS_KEY__": keys[(name, "tls")],
@@ -290,6 +294,7 @@ def check_node_fields(output_runtime, keys):
             ("Admin", "TLS", "Certificate"): admin_cert,
             ("Admin", "TLS", "PrivateKey"): admin_key,
             ("ChannelParticipation", "Enabled"): "true",
+            ("ChannelParticipation", "MaxRequestBodySize"): "1 MB",
             ("Consensus", "WALDir"): "/var/hyperledger/production/orderer/etcdraft/wal",
             ("Consensus", "SnapDir"): "/var/hyperledger/production/orderer/etcdraft/snapshot",
         }

@@ -46,6 +46,7 @@ Admin:
       - /run/supply/admin-client-root.pem
 ChannelParticipation:
   Enabled: true
+  MaxRequestBodySize: 1 MB
 Consensus:
   WALDir: /var/hyperledger/production/orderer/etcdraft/wal
   SnapDir: /var/hyperledger/production/orderer/etcdraft/snapshot

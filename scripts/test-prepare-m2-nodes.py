@@ -94,6 +94,34 @@ def main():
             b"  Cluster:\n    ListenAddress: 0.0.0.0\n    ClientCertificate:",
             fields, output_runtime, keys, "unexpected or incomplete separate Raft listener")
         print("PASS: partial separate Raft listener rejected")
+        for replacement in (b"", b"  MaxRequestBodySize: 0\n"):
+            expect_field_rejection(
+                output_runtime / "network-config/orderer0.yaml",
+                b"  MaxRequestBodySize: 1 MB\n", replacement,
+                fields, output_runtime, keys,
+                "wrong node field ChannelParticipation.MaxRequestBodySize")
+        print("PASS: omitted and zero rendered channel join body limits rejected")
+        source_root = test_root / "source"
+        source_template = source_root / "network/config/orderer0.yaml"
+        source_template.parent.mkdir(parents=True)
+        original_source = (ROOT / "network/config/orderer0.yaml").read_bytes()
+        assert original_source.count(b"  MaxRequestBodySize: 1 MB\n") == 1
+        source_template.write_bytes(original_source.replace(
+            b"  MaxRequestBodySize: 1 MB\n", b"  MaxRequestBodySize: 0\n", 1))
+        render = preflight["rendered_config"]
+        render_globals = render.__globals__
+        original_root = render_globals["ROOT"]
+        try:
+            render_globals["ROOT"] = source_root
+            try:
+                render("orderer0", keys)
+            except ValueError as error:
+                assert "source MaxRequestBodySize must be 1 MB" in str(error), str(error)
+            else:
+                raise AssertionError("zero source channel join body limit accepted")
+        finally:
+            render_globals["ROOT"] = original_root
+        print("PASS: zero source channel join body limit rejected")
         if args.inspect_block:
             assert "three effective Raft TLS cert paths and PEM bytes" in checked.stdout
             print("PASS: rendered Orderer TLS certs match native decoded #17 block")
